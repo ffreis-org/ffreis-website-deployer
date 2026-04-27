@@ -108,7 +108,7 @@ jobs:
           echo "organization=$ORGANIZATION" >> "$GITHUB_OUTPUT"
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v2
+        uses: SonarSource/sonarcloud-github-action@v5
         with:
           projectKey: ${{ steps.sonar-args.outputs.project-key }}
           organization: ${{ steps.sonar-args.outputs.organization }}
