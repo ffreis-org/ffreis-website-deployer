@@ -1,0 +1,30 @@
+services:
+  compiler-watch:
+    image: ${STITCHER_IMAGE:?set STITCHER_IMAGE}
+    build:
+      context: .
+      dockerfile: containers/Dockerfile
+      args:
+        WEBSITE_COMPILER_IMAGE: ${WEBSITE_COMPILER_IMAGE}
+        STITCHER_RUNTIME_IMAGE: ${STITCHER_RUNTIME_IMAGE}
+    container_name: website-compiler-watch
+    working_dir: /workspace
+    environment:
+      ROOT_DIR: /workspace
+      WEBSITE_ROOT:        ${WEBSITE_ROOT:?set WEBSITE_ROOT}
+      OUT_DIR:             ${OUT_DIR:?set OUT_DIR}
+      INLINE_ASSETS:       ${INLINE_ASSETS:-false}
+      COPY_ASSETS:         ${COPY_ASSETS:-true}
+      STITCHER_WATCH_PATH: ${STITCHER_WATCH_PATH:-.}
+    volumes:
+      - ${WORKSPACE_ROOT:-.}:/workspace
+    command: ["bash", "/workspace/website-deployer/local/scripts/watch-build.sh"]
+
+  preview:
+    image: ${PREVIEW_IMAGE}
+    container_name: website-compiler-preview
+    depends_on: [compiler-watch]
+    ports:
+      - "8088:80"
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/${OUT_DIR:?set OUT_DIR}:/usr/share/nginx/html:ro
