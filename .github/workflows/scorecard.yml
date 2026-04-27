@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+permissions:
+  actions: read
+  contents: read
 
 jobs:
   scorecard:
