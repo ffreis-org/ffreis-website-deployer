@@ -25,8 +25,8 @@ if [[ ! -f "$INVENTORY" ]]; then
   echo "error: no inventory config found for '${WEBSITE}'" >&2
   echo "" >&2
   echo "Available websites:" >&2
-  ls "${_INVENTORY_DIR}/"*.yaml 2>/dev/null \
-    | xargs -n1 basename | sed 's/\.yaml$//' | sed 's/^/  /' >&2
+  find "${_INVENTORY_DIR}/" -maxdepth 1 -name '*.yaml' -print0 2>/dev/null \
+    | xargs -0 -n1 basename | sed 's/\.yaml$//' | sed 's/^/  /' >&2
   exit 1
 fi
 
@@ -100,7 +100,9 @@ OUT_DIR="$(mktemp -d "/tmp/preview-out-${WEBSITE}-XXXXXX")"
 SERVER_PID=""
 
 cleanup() {
-  [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  if [[ -n "$SERVER_PID" ]]; then
+    kill "$SERVER_PID" 2>/dev/null || true
+  fi
   rm -rf "$WORK_DIR" "$OUT_DIR"
 }
 trap cleanup EXIT INT TERM
