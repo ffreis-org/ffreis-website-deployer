@@ -1,0 +1,13 @@
+# OS / editor artefacts
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# lefthook local binary
+.bin/
+
+# per-user local deployer configs (contain absolute local paths)
+config/*.local.yaml

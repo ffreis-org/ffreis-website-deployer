@@ -1,0 +1,303 @@
+name: Deploy
+
+on:
+  repository_dispatch:
+    types: [website-deploy-request]
+  workflow_dispatch:
+    inputs:
+      website_name:
+        description: 'Website name (must match a file in websites-inventory/)'
+        required: true
+      website_sha:
+        description: 'Website repo SHA (leave empty for HEAD of main)'
+        required: false
+        default: ''
+      data_sha:
+        description: 'Data repo SHA (leave empty for HEAD of main)'
+        required: false
+        default: ''
+
+# Never cancel a running deploy mid-flight. Queue the next one instead.
+concurrency:
+  group: deploy-${{ inputs.website_name || github.event.client_payload.website_name }}
+  cancel-in-progress: false
+
+
+
+jobs:
+  # ── config ────────────────────────────────────────────────────────────────
+  # Reads <website_name>.yaml from websites-inventory and decides whether to proceed.
+  # All downstream jobs key off the should_deploy output.
+  config:
+    name: Resolve Config
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      website_name:   ${{ steps.name.outputs.website_name }}
+      should_deploy:  ${{ steps.gate.outputs.should_deploy }}
+      deploy_mode:    ${{ steps.read.outputs.deploy_mode }}
+      website_repo:   ${{ steps.read.outputs.website_repo }}
+      website_ref:    ${{ steps.read.outputs.website_ref }}
+      data_repo:      ${{ steps.read.outputs.data_repo }}
+      data_ref:       ${{ steps.read.outputs.data_ref }}
+      compiler_repo:  ${{ steps.read.outputs.compiler_repo }}
+      compiler_ref:   ${{ steps.read.outputs.compiler_ref }}
+      builds_bucket:  ${{ steps.read.outputs.builds_bucket }}
+      builds_region:  ${{ steps.read.outputs.builds_region }}
+      github_env:     ${{ steps.read.outputs.github_environment }}
+
+    steps:
+      - name: Resolve website name
+        id: name
+        run: |
+          NAME="${{ inputs.website_name || github.event.client_payload.website_name }}"
+          if [[ -z "$NAME" ]]; then
+            echo "website_name is required (pass as input or client_payload.website_name)" >&2
+            exit 1
+          fi
+          echo "website_name=${NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout websites-inventory
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.INVENTORY_REPO || format('{0}/websites-inventory', github.repository_owner) }}
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - name: Parse inventory file
+        id: read
+        env:
+          WEBSITE_NAME: ${{ steps.name.outputs.website_name }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import yaml, os, sys
+          name = os.environ["WEBSITE_NAME"]
+          path = f"{name}.yaml"
+          if not os.path.exists(path):
+              print(f"Inventory file not found: {path}", file=sys.stderr)
+              sys.exit(1)
+          with open(path) as f:
+              cfg = yaml.safe_load(f)
+          out = os.environ["GITHUB_OUTPUT"]
+          sources  = cfg.get("sources", {})
+          website  = sources.get("website", {})
+          data     = sources.get("data",    {})
+          compiler = cfg.get("compiler", {})
+          builds   = cfg.get("builds",  {})
+          with open(out, "a") as f:
+              f.write(f"deploy_mode={cfg.get('deploy_mode','manual')}\n")
+              f.write(f"website_repo={website.get('repo','')}\n")
+              f.write(f"website_ref={website.get('ref','main')}\n")
+              f.write(f"data_repo={data.get('repo','')}\n")
+              f.write(f"data_ref={data.get('ref','main')}\n")
+              f.write(f"compiler_repo={compiler.get('repo','')}\n")
+              f.write(f"compiler_ref={compiler.get('ref','main')}\n")
+              f.write(f"builds_bucket={builds.get('bucket','')}\n")
+              f.write(f"builds_region={builds.get('region','us-east-1')}\n")
+              f.write(f"github_environment={cfg.get('github_environment','prod')}\n")
+          PYEOF
+
+      - name: Gate on deploy_mode
+        id: gate
+        run: |
+          set -euo pipefail
+          MODE="${{ steps.read.outputs.deploy_mode }}"
+          EVENT="${{ github.event_name }}"
+          if [[ "$MODE" == "manual" && "$EVENT" != "workflow_dispatch" ]]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "deploy_mode=manual and trigger is ${EVENT} — skipping"
+          else
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── validate ──────────────────────────────────────────────────────────────
+  validate:
+    name: Validate Data
+    needs: config
+    if: needs.config.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout data repo
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.config.outputs.data_repo }}
+          ref: ${{ github.event.client_payload.data_sha || inputs.data_sha || needs.config.outputs.data_ref }}
+          path: checkout/data
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - name: Checkout website repo
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.config.outputs.website_repo }}
+          ref: ${{ inputs.website_sha || needs.config.outputs.website_ref }}
+          path: checkout/website
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - name: Checkout compiler
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.config.outputs.compiler_repo }}
+          ref: ${{ needs.config.outputs.compiler_ref }}
+          path: checkout/compiler
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: checkout/compiler/go.mod
+          cache: true
+
+      - name: Detect compiler layout
+        id: compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          for root in checkout/compiler checkout/compiler/*/; do
+            if [[ -f "${root}/go.mod" && -f "${root}/cmd/website-compiler/main.go" ]]; then
+              echo "dir=${root}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "Could not detect compiler layout under checkout/compiler" >&2; exit 1
+
+      - name: Inject data into website
+        run: |
+          set -euo pipefail
+          cp -r checkout/data/site.d checkout/website/src/data/
+          cp checkout/data/site.yaml checkout/website/src/data/
+
+      - name: Validate site data against contract
+        run: |
+          set -euo pipefail
+          go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/website-compiler \
+            validate-site-data \
+            -website-root "$GITHUB_WORKSPACE/checkout/website"
+
+  # ── build ─────────────────────────────────────────────────────────────────
+  build:
+    name: Build & Upload Artifact
+    needs: [config, validate]
+    if: needs.config.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.config.outputs.github_env }}
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      sha7: ${{ steps.upload.outputs.sha7 }}
+
+    steps:
+      - name: Checkout data repo
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.config.outputs.data_repo }}
+          ref: ${{ github.event.client_payload.data_sha || inputs.data_sha || needs.config.outputs.data_ref }}
+          path: checkout/data
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - name: Checkout website repo
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.config.outputs.website_repo }}
+          ref: ${{ inputs.website_sha || needs.config.outputs.website_ref }}
+          path: checkout/website
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - name: Checkout compiler
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.config.outputs.compiler_repo }}
+          ref: ${{ needs.config.outputs.compiler_ref }}
+          path: checkout/compiler
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: checkout/compiler/go.mod
+          cache: true
+
+      - name: Detect compiler layout
+        id: compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          for root in checkout/compiler checkout/compiler/*/; do
+            if [[ -f "${root}/go.mod" && -f "${root}/cmd/website-compiler/main.go" ]]; then
+              echo "dir=${root}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "Could not detect compiler layout under checkout/compiler" >&2; exit 1
+
+      - name: Inject data into website
+        run: |
+          set -euo pipefail
+          cp -r checkout/data/site.d checkout/website/src/data/
+          cp checkout/data/site.yaml checkout/website/src/data/
+
+      - name: Build static site
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/build-static \
+            -website-root "$GITHUB_WORKSPACE/checkout/website" \
+            -out "$GITHUB_WORKSPACE/dist"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ needs.config.outputs.builds_region }}
+
+      - name: Upload build artifact to staging bucket
+        id: upload
+        env:
+          WEBSITE_NAME:  ${{ needs.config.outputs.website_name }}
+          BUILD_SHA:     ${{ github.event.client_payload.sha || github.sha }}
+          BUILDS_BUCKET: ${{ needs.config.outputs.builds_bucket }}
+          REGION:        ${{ needs.config.outputs.builds_region }}
+        run: |
+          set -euo pipefail
+          SHA7="${BUILD_SHA::7}"
+          aws s3 sync dist/ "s3://${BUILDS_BUCKET}/${WEBSITE_NAME}/${SHA7}/" \
+            --region "$REGION" --delete
+          echo "sha7=${SHA7}" >> "$GITHUB_OUTPUT"
+
+  # ── promote ───────────────────────────────────────────────────────────────
+  promote:
+    name: Promote to Live
+    needs: [config, build]
+    if: needs.config.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.config.outputs.github_env }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ needs.config.outputs.builds_region }}
+
+      - name: Promote build to live bucket
+        env:
+          WEBSITE_NAME:  ${{ needs.config.outputs.website_name }}
+          SHA7:          ${{ needs.build.outputs.sha7 }}
+          BUILDS_BUCKET: ${{ needs.config.outputs.builds_bucket }}
+          LIVE_BUCKET:   ${{ secrets.S3_WEBSITE_BUCKET }}
+          REGION:        ${{ needs.config.outputs.builds_region }}
+        run: |
+          set -euo pipefail
+          aws s3 sync "s3://${BUILDS_BUCKET}/${WEBSITE_NAME}/${SHA7}/" \
+            "s3://${LIVE_BUCKET}/" --region "$REGION" --delete
+
+      - name: Invalidate CloudFront cache
+        env:
+          CF_DISTRIBUTION_ID: ${{ secrets.CF_DISTRIBUTION_ID }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CF_DISTRIBUTION_ID" \
+            --paths "/*"

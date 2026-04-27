@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '.github/workflows/**'
+      - 'Makefile'
+      - 'lefthook.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'Makefile'
+      - 'lefthook.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Lint Workflows
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          ACTIONLINT_VERSION="1.7.7"
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          curl -fsSL "$url" -o "$tmp/actionlint.tgz"
+          tar -xzf "$tmp/actionlint.tgz" -C "$tmp"
+          sudo install -m 0755 "$tmp/actionlint" /usr/local/bin/actionlint
+          actionlint -version
+
+      - name: Run actionlint
+        run: actionlint

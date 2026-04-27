@@ -1,0 +1,117 @@
+# SonarCloud analysis for Python projects using the devops workflow template
+
+name: Python SonarCloud
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version to use"
+        type: string
+        default: "3.13"
+      working-directory:
+        description: "Directory to run steps in"
+        type: string
+        default: "."
+      uv-extras:
+        description: "uv extras to install (e.g. dev)"
+        type: string
+        default: "dev"
+      sonar-project-key:
+        description: "SonarCloud project key (defaults to repository name)"
+        type: string
+        default: ""
+      sonar-organization:
+        description: "SonarCloud organization slug"
+        type: string
+        default: ""
+      coverage-command:
+        description: "Command to generate coverage report (XML)"
+        type: string
+        default: "uv run pytest --cov=src --cov-report=xml tests/unit_tests"
+      coverage-file:
+        description: "Path to the coverage XML file"
+        type: string
+        default: "coverage.xml"
+      coverage-artifact-name:
+        description: "Name of a coverage artifact uploaded by python-coverage.yml (skips regeneration)"
+        type: string
+        default: ""
+    secrets:
+      SONAR_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sonar:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    if: vars.SONAR_ENABLED != 'false'
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          enable-cache: true
+
+      - name: Install deps
+        env:
+          UV_EXTRAS: ${{ inputs.uv-extras }}
+        run: |
+          set -euo pipefail
+          uv sync --frozen --extra "$UV_EXTRAS"
+
+      - name: Download coverage artifact
+        if: inputs.coverage-artifact-name != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.coverage-artifact-name }}
+          path: ${{ inputs.working-directory }}
+
+      - name: Generate coverage (if no artifact)
+        if: inputs.coverage-artifact-name == ''
+        env:
+          COVERAGE_COMMAND: ${{ inputs.coverage-command }}
+        run: |
+          set -euo pipefail
+          bash -lc "$COVERAGE_COMMAND"
+
+      - name: Build Sonar extra args
+        id: sonar-args
+        env:
+          PROJECT_KEY: ${{ inputs.sonar-project-key || vars.SONAR_PROJECT_KEY || format('{0}_{1}', github.repository_owner, github.event.repository.name) }}
+          ORGANIZATION: ${{ inputs.sonar-organization || vars.SONAR_ORGANIZATION || github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$PROJECT_KEY" && -f sonar-project.properties ]]; then
+            PROJECT_KEY="$(grep -E '^sonar\\.projectKey=' sonar-project.properties | head -n 1 | cut -d= -f2- || true)"
+          fi
+          if [[ -z "$ORGANIZATION" && -f sonar-project.properties ]]; then
+            ORGANIZATION="$(grep -E '^sonar\\.organization=' sonar-project.properties | head -n 1 | cut -d= -f2- || true)"
+          fi
+          echo "project-key=$PROJECT_KEY" >> "$GITHUB_OUTPUT"
+          echo "organization=$ORGANIZATION" >> "$GITHUB_OUTPUT"
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectKey: ${{ steps.sonar-args.outputs.project-key }}
+          organization: ${{ steps.sonar-args.outputs.organization }}
+          token: ${{ secrets.SONAR_TOKEN }}
+          args: >-
+            -Dsonar.python.coverage.reportPaths=${{ inputs.coverage-file }}
