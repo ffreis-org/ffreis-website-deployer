@@ -10,4 +10,3 @@ jobs:
     uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-shellcheck.yml@main
     with:
       working-directory: .
-      fail-on-error: true
