@@ -2,7 +2,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
   echo "Usage: $0 <tool> [tool...]" >&2
   exit 1
 fi
@@ -10,7 +10,8 @@ fi
 missing=0
 
 install_hint() {
-  case "$1" in
+  local tool_name="$1"
+  case "$tool_name" in
     golangci-lint)
       echo "go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
       ;;
@@ -27,19 +28,21 @@ install_hint() {
       echo "Install Go from https://go.dev/dl/"
       ;;
     *)
-      echo "Install '$1' and ensure it is available in PATH."
+      echo "Install '$tool_name' and ensure it is available in PATH."
       ;;
   esac
+  return 0
 }
 
 for tool in "$@"; do
-  if command -v "$tool" >/dev/null 2>&1; then
+  local_tool="$tool"
+  if command -v "$local_tool" >/dev/null 2>&1; then
     continue
   fi
 
-  echo "Missing required tool: $tool" >&2
-  echo "Install hint: $(install_hint "$tool")" >&2
+  echo "Missing required tool: $local_tool" >&2
+  echo "Install hint: $(install_hint "$local_tool")" >&2
   missing=1
 done
 
-exit "$missing"
+return "$missing"

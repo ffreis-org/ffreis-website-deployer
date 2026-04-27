@@ -100,10 +100,12 @@ OUT_DIR="$(mktemp -d "/tmp/preview-out-${WEBSITE}-XXXXXX")"
 SERVER_PID=""
 
 cleanup() {
-  if [[ -n "$SERVER_PID" ]]; then
-    kill "$SERVER_PID" 2>/dev/null || true
+  local pid="$SERVER_PID"
+  if [[ -n "$pid" ]]; then
+    kill "$pid" 2>/dev/null || true
   fi
   rm -rf "$WORK_DIR" "$OUT_DIR"
+  return 0
 }
 trap cleanup EXIT INT TERM
 

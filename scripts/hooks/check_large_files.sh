@@ -15,3 +15,5 @@ while IFS= read -r -d '' file; do
     exit 1
   fi
 done < <(git diff --cached --name-only -z --diff-filter=ACM)
+
+return 0

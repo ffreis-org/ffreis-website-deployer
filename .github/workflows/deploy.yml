@@ -22,8 +22,7 @@ concurrency:
   group: deploy-${{ inputs.website_name || github.event.client_payload.website_name }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
+
 
 jobs:
   # ── config ────────────────────────────────────────────────────────────────
@@ -32,6 +31,8 @@ jobs:
   config:
     name: Resolve Config
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       website_name:   ${{ steps.name.outputs.website_name }}
       should_deploy:  ${{ steps.gate.outputs.should_deploy }}

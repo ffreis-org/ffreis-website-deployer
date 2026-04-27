@@ -9,12 +9,13 @@ COPY_ASSETS="${COPY_ASSETS:-true}"
 WEBSITE_COMPILER_BIN="${WEBSITE_COMPILER_BIN:-/usr/local/bin/website-compiler}"
 STITCHER_WATCH_PATH="${STITCHER_WATCH_PATH:-.}"
 
-[ -n "${WEBSITE_ROOT}" ] || { echo "WEBSITE_ROOT is required"; exit 1; }
-[ -n "${OUT_DIR}" ] || { echo "OUT_DIR is required"; exit 1; }
-[ -x "${WEBSITE_COMPILER_BIN}" ] || { echo "WEBSITE_COMPILER_BIN is not executable: ${WEBSITE_COMPILER_BIN}"; exit 1; }
+
+[[ -n "${WEBSITE_ROOT}" ]] || { echo "WEBSITE_ROOT is required"; exit 1; }
+[[ -n "${OUT_DIR}" ]] || { echo "OUT_DIR is required"; exit 1; }
+[[ -x "${WEBSITE_COMPILER_BIN}" ]] || { echo "WEBSITE_COMPILER_BIN is not executable: ${WEBSITE_COMPILER_BIN}"; exit 1; }
 
 cd "${ROOT_DIR}"
-[ -d "${STITCHER_WATCH_PATH}" ] || { echo "STITCHER_WATCH_PATH is not a directory: ${STITCHER_WATCH_PATH}"; exit 1; }
+[[ -d "${STITCHER_WATCH_PATH}" ]] || { echo "STITCHER_WATCH_PATH is not a directory: ${STITCHER_WATCH_PATH}"; exit 1; }
 
 build_site() {
   echo "[$(date -Iseconds)] Building site..."
@@ -24,12 +25,14 @@ build_site() {
     -inline-assets="${INLINE_ASSETS}" \
     -copy-assets="${COPY_ASSETS}"
   echo "[$(date -Iseconds)] Build complete."
+  return 0
 }
 
 watch_loop() {
   inotifywait -r -e modify,create,delete,move \
     --exclude '(^|/)(\.git|dist|node_modules|\.venv)(/|$)' \
     "${WEBSITE_ROOT}" "${STITCHER_WATCH_PATH}"
+  return 0
 }
 
 build_site

@@ -60,7 +60,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python-version }}
 
@@ -104,8 +104,8 @@ jobs:
           if [[ -z "$ORGANIZATION" && -f sonar-project.properties ]]; then
             ORGANIZATION="$(grep -E '^sonar\\.organization=' sonar-project.properties | head -n 1 | cut -d= -f2- || true)"
           fi
-          echo "project-key=$PROJECT_KEY" >> $GITHUB_OUTPUT
-          echo "organization=$ORGANIZATION" >> $GITHUB_OUTPUT
+          echo "project-key=$PROJECT_KEY" >> "$GITHUB_OUTPUT"
+          echo "organization=$ORGANIZATION" >> "$GITHUB_OUTPUT"
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2

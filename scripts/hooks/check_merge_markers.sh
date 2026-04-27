@@ -9,7 +9,7 @@ if ! command -v rg >/dev/null 2>&1; then
 fi
 
 if rg -n --hidden --glob '!.git/**' '^(<{7}|={7}|>{7})' . >/dev/null; then
-  echo "ERROR: merge conflict markers found"
+  echo "ERROR: merge conflict markers found" >&2
   rg -n --hidden --glob '!.git/**' '^(<{7}|={7}|>{7})' .
   exit 1
 fi
