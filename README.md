@@ -3,7 +3,7 @@
 Centralized deployment authority for all websites in the fleet.
 
 One workflow per website. Deploy mode (`auto` / `manual`) is controlled by the
-`deploy_mode` field in [websites-inventory](https://github.com/FelipeFuhr/websites-inventory).
+`deploy_mode` field in your `websites-inventory` repo.
 
 ## How it works
 
@@ -49,8 +49,8 @@ repository_dispatch ──► deploy-{website}.yml
 ## Adding a new website
 
 1. Add `{website}.yaml` to websites-inventory with `deploy_mode: manual`
-2. Copy `.github/workflows/deploy-flemming.yml` to `deploy-{website}.yml`
-3. Replace `flemming` with the new website name in the workflow
+2. Copy an existing `.github/workflows/deploy-{existing}.yml` to `deploy-{website}.yml`
+3. Replace the existing website name with the new website name in the workflow
 4. Add required secrets to the `prod` environment
 5. Trigger a `workflow_dispatch` to verify end-to-end
 6. Set `deploy_mode: auto` in websites-inventory once verified

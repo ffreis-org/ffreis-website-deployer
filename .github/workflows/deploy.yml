@@ -8,6 +8,10 @@ on:
       website_name:
         description: 'Website name (must match a file in websites-inventory/)'
         required: true
+      deployment_name:
+        description: 'Deployment to run (empty = all deployments)'
+        required: false
+        default: ''
       website_sha:
         description: 'Website repo SHA (leave empty for HEAD of main)'
         required: false
@@ -19,7 +23,7 @@ on:
 
 # Never cancel a running deploy mid-flight. Queue the next one instead.
 concurrency:
-  group: deploy-${{ inputs.website_name || github.event.client_payload.website_name }}
+  group: deploy-${{ inputs.website_name || github.event.client_payload.website_name }}-${{ inputs.deployment_name || github.event.client_payload.deployment_name || 'all' }}
   cancel-in-progress: false
 
 
@@ -29,26 +33,17 @@ permissions:
 
 jobs:
   # ── config ────────────────────────────────────────────────────────────────
-  # Reads <website_name>.yaml from websites-inventory and decides whether to proceed.
-  # All downstream jobs key off the should_deploy output.
+  # Reads <website_name>.yaml from websites-inventory and resolves the list of
+  # deployments to build. Downstream jobs fan out over deployments_json as a matrix.
   config:
     name: Resolve Config
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
-      website_name:   ${{ steps.name.outputs.website_name }}
-      should_deploy:  ${{ steps.gate.outputs.should_deploy }}
-      deploy_mode:    ${{ steps.read.outputs.deploy_mode }}
-      website_repo:   ${{ steps.read.outputs.website_repo }}
-      website_ref:    ${{ steps.read.outputs.website_ref }}
-      data_repo:      ${{ steps.read.outputs.data_repo }}
-      data_ref:       ${{ steps.read.outputs.data_ref }}
-      compiler_repo:  ${{ steps.read.outputs.compiler_repo }}
-      compiler_ref:   ${{ steps.read.outputs.compiler_ref }}
-      builds_bucket:  ${{ steps.read.outputs.builds_bucket }}
-      builds_region:  ${{ steps.read.outputs.builds_region }}
-      github_env:     ${{ steps.read.outputs.github_environment }}
+      website_name:     ${{ steps.name.outputs.website_name }}
+      should_deploy:    ${{ steps.parse.outputs.should_deploy }}
+      deployments_json: ${{ steps.parse.outputs.deployments_json }}
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -72,59 +67,101 @@ jobs:
           repository: ${{ vars.INVENTORY_REPO || format('{0}/websites-inventory', github.repository_owner) }}
           token: ${{ secrets.CI_REPO_READ_TOKEN }}
 
-      - name: Parse inventory file
-        id: read
+      - name: Parse inventory and resolve deployments
+        id: parse
         env:
-          WEBSITE_NAME: ${{ steps.name.outputs.website_name }}
+          WEBSITE_NAME:      ${{ steps.name.outputs.website_name }}
+          DEPLOYMENT_NAME:   ${{ inputs.deployment_name || github.event.client_payload.deployment_name || '' }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           python3 - <<'PYEOF'
-          import yaml, os, sys
-          name = os.environ["WEBSITE_NAME"]
+          import yaml, os, sys, json
+
+          name              = os.environ["WEBSITE_NAME"]
+          deployment_filter = os.environ.get("DEPLOYMENT_NAME", "").strip()
+          event             = os.environ["GITHUB_EVENT_NAME"]
+
           path = f"{name}.yaml"
           if not os.path.exists(path):
               print(f"Inventory file not found: {path}", file=sys.stderr)
               sys.exit(1)
           with open(path) as f:
               cfg = yaml.safe_load(f)
-          out = os.environ["GITHUB_OUTPUT"]
-          sources  = cfg.get("sources", {})
-          website  = sources.get("website", {})
-          data     = sources.get("data",    {})
-          compiler = cfg.get("compiler", {})
-          builds   = cfg.get("builds",  {})
-          with open(out, "a") as f:
-              f.write(f"deploy_mode={cfg.get('deploy_mode','manual')}\n")
-              f.write(f"website_repo={website.get('repo','')}\n")
-              f.write(f"website_ref={website.get('ref','main')}\n")
-              f.write(f"data_repo={data.get('repo','')}\n")
-              f.write(f"data_ref={data.get('ref','main')}\n")
-              f.write(f"compiler_repo={compiler.get('repo','')}\n")
-              f.write(f"compiler_ref={compiler.get('ref','main')}\n")
-              f.write(f"builds_bucket={builds.get('bucket','')}\n")
-              f.write(f"builds_region={builds.get('region','us-east-1')}\n")
-              f.write(f"github_environment={cfg.get('github_environment','prod')}\n")
-          PYEOF
 
-      - name: Gate on deploy_mode
-        id: gate
-        run: |
-          set -euo pipefail
-          MODE="${{ steps.read.outputs.deploy_mode }}"
-          EVENT="${{ github.event_name }}"
-          if [[ "$MODE" == "manual" && "$EVENT" != "workflow_dispatch" ]]; then
-            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
-            echo "deploy_mode=manual and trigger is ${EVENT} — skipping"
-          else
-            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-          fi
+          top_sources  = cfg.get("sources", {})
+          top_website  = top_sources.get("website", {})
+          top_data     = top_sources.get("data",    {})
+          top_compiler = cfg.get("compiler", {})
+          top_builds   = cfg.get("builds",  {})
+          top_publish  = cfg.get("publish", {})
+          top_mode     = cfg.get("deploy_mode", "manual")
+          top_env      = cfg.get("github_environment", "prod")
+          top_cf       = top_publish.get("cloudfront_invalidate_paths", ["/*"])
+
+          raw_deployments = cfg.get("deployments", None)
+          legacy = raw_deployments is None
+
+          def resolve(dep_name, dep_cfg):
+              d_src = dep_cfg.get("sources", {})
+              d_web = d_src.get("website", {})
+              d_dat = d_src.get("data",    {})
+              d_pub = dep_cfg.get("publish", {})
+              d_cf  = d_pub.get("cloudfront_invalidate_paths", top_cf)
+              return {
+                  "name":             dep_name,
+                  "deploy_mode":      dep_cfg.get("deploy_mode", top_mode),
+                  "website_repo":     top_website.get("repo", ""),
+                  "website_ref":      d_web.get("ref", top_website.get("ref", "main")),
+                  "data_repo":        top_data.get("repo", ""),
+                  "data_ref":         d_dat.get("ref", top_data.get("ref", "main")),
+                  "compiler_repo":    top_compiler.get("repo", ""),
+                  "compiler_ref":     top_compiler.get("ref", "main"),
+                  "builds_bucket":    top_builds.get("bucket", ""),
+                  "builds_region":    top_builds.get("region", "us-east-1"),
+                  "publish_bucket":   d_pub.get("bucket", top_publish.get("bucket", "")),
+                  "publish_prefix":   d_pub.get("prefix", ""),
+                  "publish_region":   d_pub.get("region", top_publish.get("region", top_builds.get("region", "us-east-1"))),
+                  "cloudfront_paths": " ".join(d_cf),
+                  "github_env":       dep_cfg.get("github_environment", top_env),
+                  "staging_prefix":   f"{name}/{dep_name}" if not legacy else name,
+              }
+
+          if not legacy:
+              all_deps = [resolve(k, v) for k, v in raw_deployments.items()]
+          else:
+              all_deps = [resolve("production", {})]
+
+          if deployment_filter:
+              selected = [d for d in all_deps if d["name"] == deployment_filter]
+              if not selected:
+                  avail = [d["name"] for d in all_deps]
+                  print(f"deployment '{deployment_filter}' not found in {name}.yaml; available: {avail}", file=sys.stderr)
+                  sys.exit(1)
+          elif event == "workflow_dispatch":
+              selected = all_deps
+          else:
+              selected = [d for d in all_deps if d["deploy_mode"] == "auto"]
+
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a") as f:
+              delim = "DEPLOYMENTS_JSON_EOF"
+              f.write(f"should_deploy={'true' if selected else 'false'}\n")
+              f.write(f"deployments_json<<{delim}\n")
+              f.write(json.dumps(selected))
+              f.write(f"\n{delim}\n")
+          PYEOF
 
   # ── validate ──────────────────────────────────────────────────────────────
   validate:
-    name: Validate Data
+    name: Validate Data (${{ matrix.deployment.name }})
     needs: config
     if: needs.config.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        deployment: ${{ fromJson(needs.config.outputs.deployments_json) }}
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -135,24 +172,24 @@ jobs:
       - name: Checkout data repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ needs.config.outputs.data_repo }}
-          ref: ${{ github.event.client_payload.data_sha || inputs.data_sha || needs.config.outputs.data_ref }}
+          repository: ${{ matrix.deployment.data_repo }}
+          ref: ${{ github.event.client_payload.data_sha || inputs.data_sha || matrix.deployment.data_ref }}
           path: checkout/data
           token: ${{ secrets.CI_REPO_READ_TOKEN }}
 
       - name: Checkout website repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ needs.config.outputs.website_repo }}
-          ref: ${{ inputs.website_sha || needs.config.outputs.website_ref }}
+          repository: ${{ matrix.deployment.website_repo }}
+          ref: ${{ inputs.website_sha || matrix.deployment.website_ref }}
           path: checkout/website
           token: ${{ secrets.CI_REPO_READ_TOKEN }}
 
       - name: Checkout compiler
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ needs.config.outputs.compiler_repo }}
-          ref: ${{ needs.config.outputs.compiler_ref }}
+          repository: ${{ matrix.deployment.compiler_repo }}
+          ref: ${{ matrix.deployment.compiler_ref }}
           path: checkout/compiler
           token: ${{ secrets.CI_REPO_READ_TOKEN }}
 
@@ -189,16 +226,18 @@ jobs:
 
   # ── build ─────────────────────────────────────────────────────────────────
   build:
-    name: Build & Upload Artifact
+    name: Build & Upload Artifact (${{ matrix.deployment.name }})
     needs: [config, validate]
     if: needs.config.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
-    environment: ${{ needs.config.outputs.github_env }}
+    environment: ${{ matrix.deployment.github_env }}
     permissions:
       id-token: write
       contents: read
-    outputs:
-      sha7: ${{ steps.upload.outputs.sha7 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        deployment: ${{ fromJson(needs.config.outputs.deployments_json) }}
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -209,24 +248,24 @@ jobs:
       - name: Checkout data repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ needs.config.outputs.data_repo }}
-          ref: ${{ github.event.client_payload.data_sha || inputs.data_sha || needs.config.outputs.data_ref }}
+          repository: ${{ matrix.deployment.data_repo }}
+          ref: ${{ github.event.client_payload.data_sha || inputs.data_sha || matrix.deployment.data_ref }}
           path: checkout/data
           token: ${{ secrets.CI_REPO_READ_TOKEN }}
 
       - name: Checkout website repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ needs.config.outputs.website_repo }}
-          ref: ${{ inputs.website_sha || needs.config.outputs.website_ref }}
+          repository: ${{ matrix.deployment.website_repo }}
+          ref: ${{ inputs.website_sha || matrix.deployment.website_ref }}
           path: checkout/website
           token: ${{ secrets.CI_REPO_READ_TOKEN }}
 
       - name: Checkout compiler
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ needs.config.outputs.compiler_repo }}
-          ref: ${{ needs.config.outputs.compiler_ref }}
+          repository: ${{ matrix.deployment.compiler_repo }}
+          ref: ${{ matrix.deployment.compiler_ref }}
           path: checkout/compiler
           token: ${{ secrets.CI_REPO_READ_TOKEN }}
 
@@ -266,32 +305,34 @@ jobs:
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ needs.config.outputs.builds_region }}
+          aws-region: ${{ matrix.deployment.builds_region }}
 
       - name: Upload build artifact to staging bucket
-        id: upload
         env:
-          WEBSITE_NAME:  ${{ needs.config.outputs.website_name }}
-          BUILD_SHA:     ${{ github.event.client_payload.sha || github.sha }}
-          BUILDS_BUCKET: ${{ needs.config.outputs.builds_bucket }}
-          REGION:        ${{ needs.config.outputs.builds_region }}
+          STAGING_PREFIX: ${{ matrix.deployment.staging_prefix }}
+          BUILD_SHA:      ${{ github.event.client_payload.sha || github.sha }}
+          BUILDS_BUCKET:  ${{ matrix.deployment.builds_bucket }}
+          REGION:         ${{ matrix.deployment.builds_region }}
         run: |
           set -euo pipefail
           SHA7="${BUILD_SHA::7}"
-          aws s3 sync dist/ "s3://${BUILDS_BUCKET}/${WEBSITE_NAME}/${SHA7}/" \
+          aws s3 sync dist/ "s3://${BUILDS_BUCKET}/${STAGING_PREFIX}/${SHA7}/" \
             --region "$REGION" --delete
-          echo "sha7=${SHA7}" >> "$GITHUB_OUTPUT"
 
   # ── promote ───────────────────────────────────────────────────────────────
   promote:
-    name: Promote to Live
+    name: Promote to Live (${{ matrix.deployment.name }})
     needs: [config, build]
     if: needs.config.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
-    environment: ${{ needs.config.outputs.github_env }}
+    environment: ${{ matrix.deployment.github_env }}
     permissions:
       id-token: write
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        deployment: ${{ fromJson(needs.config.outputs.deployments_json) }}
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -303,24 +344,34 @@ jobs:
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ needs.config.outputs.builds_region }}
+          aws-region: ${{ matrix.deployment.builds_region }}
 
       - name: Promote build to live bucket
         env:
-          WEBSITE_NAME:  ${{ needs.config.outputs.website_name }}
-          SHA7:          ${{ needs.build.outputs.sha7 }}
-          BUILDS_BUCKET: ${{ needs.config.outputs.builds_bucket }}
-          LIVE_BUCKET:   ${{ secrets.S3_WEBSITE_BUCKET }}
-          REGION:        ${{ needs.config.outputs.builds_region }}
+          STAGING_PREFIX: ${{ matrix.deployment.staging_prefix }}
+          BUILD_SHA:      ${{ github.event.client_payload.sha || github.sha }}
+          BUILDS_BUCKET:  ${{ matrix.deployment.builds_bucket }}
+          LIVE_BUCKET:    ${{ secrets.S3_WEBSITE_BUCKET }}
+          PUBLISH_PREFIX: ${{ matrix.deployment.publish_prefix }}
+          REGION:         ${{ matrix.deployment.builds_region }}
         run: |
           set -euo pipefail
-          aws s3 sync "s3://${BUILDS_BUCKET}/${WEBSITE_NAME}/${SHA7}/" \
-            "s3://${LIVE_BUCKET}/" --region "$REGION" --delete
+          SHA7="${BUILD_SHA::7}"
+          SRC="s3://${BUILDS_BUCKET}/${STAGING_PREFIX}/${SHA7}/"
+          if [[ -n "${PUBLISH_PREFIX}" ]]; then
+            DEST="s3://${LIVE_BUCKET}/${PUBLISH_PREFIX%/}/"
+          else
+            DEST="s3://${LIVE_BUCKET}/"
+          fi
+          aws s3 sync "$SRC" "$DEST" --region "$REGION" --delete
 
       - name: Invalidate CloudFront cache
         env:
           CF_DISTRIBUTION_ID: ${{ secrets.CF_DISTRIBUTION_ID }}
+          CF_PATHS:           ${{ matrix.deployment.cloudfront_paths }}
         run: |
+          # CF_PATHS is space-joined; pass unquoted so each path is a separate argument
+          # shellcheck disable=SC2086
           aws cloudfront create-invalidation \
             --distribution-id "$CF_DISTRIBUTION_ID" \
-            --paths "/*"
+            --paths $CF_PATHS

@@ -1,12 +1,12 @@
 services:
   compiler-watch:
-    image: ${STITCHER_IMAGE:?set STITCHER_IMAGE}
+    image: ${COMPILER_WATCH_IMAGE:?set COMPILER_WATCH_IMAGE}
     build:
       context: .
       dockerfile: containers/Dockerfile
       args:
         WEBSITE_COMPILER_IMAGE: ${WEBSITE_COMPILER_IMAGE}
-        STITCHER_RUNTIME_IMAGE: ${STITCHER_RUNTIME_IMAGE}
+        COMPILER_WATCH_RUNTIME_IMAGE: ${COMPILER_WATCH_RUNTIME_IMAGE}
     container_name: website-compiler-watch
     working_dir: /workspace
     environment:
@@ -15,7 +15,7 @@ services:
       OUT_DIR:             ${OUT_DIR:?set OUT_DIR}
       INLINE_ASSETS:       ${INLINE_ASSETS:-false}
       COPY_ASSETS:         ${COPY_ASSETS:-true}
-      STITCHER_WATCH_PATH: ${STITCHER_WATCH_PATH:-.}
+      COMPILER_WATCH_PATH: ${COMPILER_WATCH_PATH:-.}
     volumes:
       - ${WORKSPACE_ROOT:-.}:/workspace
     command: ["bash", "/workspace/website-deployer/local/scripts/watch-build.sh"]
