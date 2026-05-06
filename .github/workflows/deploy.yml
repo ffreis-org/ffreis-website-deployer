@@ -115,6 +115,7 @@ jobs:
                   "website_ref":      d_web.get("ref", top_website.get("ref", "main")),
                   "data_repo":        top_data.get("repo", ""),
                   "data_ref":         d_dat.get("ref", top_data.get("ref", "main")),
+                  "data_subpath":     d_dat.get("subpath", top_data.get("subpath", "")),
                   "compiler_repo":    top_compiler.get("repo", ""),
                   "compiler_ref":     top_compiler.get("ref", "main"),
                   "builds_bucket":    top_builds.get("bucket", ""),
@@ -214,8 +215,14 @@ jobs:
       - name: Inject data into website
         run: |
           set -euo pipefail
-          cp -r checkout/data/site.d checkout/website/src/data/
-          cp checkout/data/site.yaml checkout/website/src/data/
+          SUBPATH="${{ matrix.deployment.data_subpath }}"
+          DATA_ROOT="checkout/data${SUBPATH:+/${SUBPATH%/}}"
+          mkdir -p checkout/website/src/data/site.d
+          if [ -d "checkout/data/shared/site.d" ]; then
+            cp -r checkout/data/shared/site.d/. checkout/website/src/data/site.d/
+          fi
+          cp -r "${DATA_ROOT}/site.d/." checkout/website/src/data/site.d/
+          cp "${DATA_ROOT}/site.yaml"   checkout/website/src/data/
 
       - name: Validate site data against contract
         run: |
@@ -290,8 +297,14 @@ jobs:
       - name: Inject data into website
         run: |
           set -euo pipefail
-          cp -r checkout/data/site.d checkout/website/src/data/
-          cp checkout/data/site.yaml checkout/website/src/data/
+          SUBPATH="${{ matrix.deployment.data_subpath }}"
+          DATA_ROOT="checkout/data${SUBPATH:+/${SUBPATH%/}}"
+          mkdir -p checkout/website/src/data/site.d
+          if [ -d "checkout/data/shared/site.d" ]; then
+            cp -r checkout/data/shared/site.d/. checkout/website/src/data/site.d/
+          fi
+          cp -r "${DATA_ROOT}/site.d/." checkout/website/src/data/site.d/
+          cp "${DATA_ROOT}/site.yaml"   checkout/website/src/data/
 
       - name: Build static site
         run: |
