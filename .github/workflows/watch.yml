@@ -1,0 +1,102 @@
+name: Watch — Auto Deploy
+
+# Scheduled safety net: scans the inventory once a day and dispatches a deploy
+# for every website that has at least one deployment with deploy_mode: auto.
+# This runs even if the source-repo push event was missed, ensuring the site
+# never goes stale by more than 24 hours.
+#
+# The dispatched event is repository_dispatch, so the deployer filters to
+# auto-mode deployments only (same as a source-repo push would do).
+#
+# Required: GITHUB_TOKEN with actions: write (automatic) and
+#           CI_REPO_READ_TOKEN to check out the private inventory repo.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # daily at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write  # allows triggering workflow_dispatch on this repo via API
+
+concurrency:
+  group: watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    name: Dispatch Auto Deployments
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout inventory
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ vars.INVENTORY_REPO || format('{0}/websites-inventory', github.repository_owner) }}
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - name: Discover auto websites and dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import yaml, os, subprocess, glob, sys, json
+
+          repo = os.environ["REPO"]
+          errors = []
+
+          for path in sorted(glob.glob("*.yaml")):
+              with open(path) as f:
+                  cfg = yaml.safe_load(f)
+              if not isinstance(cfg, dict):
+                  continue
+              # Skip KB registry entries and non-website files
+              if cfg.get("type") or not cfg.get("website"):
+                  continue
+
+              name     = cfg["website"]
+              top_mode = cfg.get("deploy_mode", "manual")
+              raw_deps = cfg.get("deployments")
+
+              if raw_deps:
+                  has_auto = any(
+                      d.get("deploy_mode", top_mode) == "auto"
+                      for d in raw_deps.values()
+                  )
+              else:
+                  has_auto = top_mode == "auto"
+
+              if not has_auto:
+                  print(f"skip {name} (no auto deployments)")
+                  continue
+
+              print(f"dispatch {name} ...")
+              body = json.dumps({
+                  "event_type": "website-deploy-request",
+                  "client_payload": {"website_name": name, "deployment_name": ""},
+              })
+              result = subprocess.run(
+                  ["gh", "api", f"repos/{repo}/dispatches",
+                   "--method", "POST", "--input", "-"],
+                  input=body, capture_output=True, text=True,
+              )
+              if result.returncode != 0:
+                  errors.append(f"{name}: {result.stderr.strip()}")
+                  print(f"  ERROR: {result.stderr.strip()}", file=sys.stderr)
+              else:
+                  print(f"  ok")
+
+          if errors:
+              print(f"\n{len(errors)} dispatch(es) failed:", file=sys.stderr)
+              for e in errors:
+                  print(f"  {e}", file=sys.stderr)
+              sys.exit(1)
+          PYEOF
