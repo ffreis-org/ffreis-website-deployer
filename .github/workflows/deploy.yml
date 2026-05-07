@@ -312,7 +312,8 @@ jobs:
           mkdir -p dist
           go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/build-static \
             -website-root "$GITHUB_WORKSPACE/checkout/website" \
-            -out "$GITHUB_WORKSPACE/dist"
+            -out "$GITHUB_WORKSPACE/dist" \
+            -clean-urls
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
