@@ -38,6 +38,7 @@ jobs:
   config:
     name: Resolve Config
     runs-on: ubuntu-latest
+    environment: prod
     permissions:
       contents: read
     outputs:
@@ -159,6 +160,7 @@ jobs:
     needs: config
     if: needs.config.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
+    environment: prod
     strategy:
       fail-fast: false
       matrix:
