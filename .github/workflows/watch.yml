@@ -26,6 +26,7 @@ concurrency:
 
 jobs:
   watch:
+    timeout-minutes: 15
     name: Dispatch Auto Deployments
     runs-on: ubuntu-latest
 

@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   actionlint:
+    timeout-minutes: 15
     name: Lint Workflows
     runs-on: ubuntu-latest
 
