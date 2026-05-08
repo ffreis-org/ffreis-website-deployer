@@ -10,6 +10,10 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   scorecard:
     uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-scorecard.yml@main
