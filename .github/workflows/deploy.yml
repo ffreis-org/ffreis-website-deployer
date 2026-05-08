@@ -134,6 +134,18 @@ jobs:
           else:
               all_deps = [resolve("production", {})]
 
+          # Compute sibling_prefixes for each deployment: the non-empty prefixes
+          # of all other deployments sharing the same publish bucket. Used by the
+          # promote step to add --exclude patterns so a root-prefix deploy (PT)
+          # does not delete sub-prefix content (EN, dev, etc.).
+          all_buckets_prefixes = [(d["publish_bucket"], d["publish_prefix"]) for d in all_deps]
+          for d in all_deps:
+              siblings = [
+                  p for (b, p) in all_buckets_prefixes
+                  if b == d["publish_bucket"] and p and p != d["publish_prefix"]
+              ]
+              d["sibling_prefixes"] = " ".join(siblings)
+
           if deployment_filter:
               selected = [d for d in all_deps if d["name"] == deployment_filter]
               if not selected:
@@ -364,12 +376,13 @@ jobs:
 
       - name: Promote build to live bucket
         env:
-          STAGING_PREFIX: ${{ matrix.deployment.staging_prefix }}
-          BUILD_SHA:      ${{ github.event.client_payload.sha || github.sha }}
-          BUILDS_BUCKET:  ${{ matrix.deployment.builds_bucket }}
-          LIVE_BUCKET:    ${{ secrets.S3_WEBSITE_BUCKET }}
-          PUBLISH_PREFIX: ${{ matrix.deployment.publish_prefix }}
-          REGION:         ${{ matrix.deployment.builds_region }}
+          STAGING_PREFIX:   ${{ matrix.deployment.staging_prefix }}
+          BUILD_SHA:        ${{ github.event.client_payload.sha || github.sha }}
+          BUILDS_BUCKET:    ${{ matrix.deployment.builds_bucket }}
+          LIVE_BUCKET:      ${{ secrets.S3_WEBSITE_BUCKET }}
+          PUBLISH_PREFIX:   ${{ matrix.deployment.publish_prefix }}
+          REGION:           ${{ matrix.deployment.builds_region }}
+          SIBLING_PREFIXES: ${{ matrix.deployment.sibling_prefixes }}
         run: |
           set -euo pipefail
           SHA7="${BUILD_SHA::7}"
@@ -379,7 +392,13 @@ jobs:
           else
             DEST="s3://${LIVE_BUCKET}/"
           fi
-          aws s3 sync "$SRC" "$DEST" --region "$REGION" --delete
+          # Exclude sibling deployment prefixes from --delete to avoid wiping
+          # other languages (e.g. PT root deploy must not delete en/*).
+          exclude_args=()
+          for sib in ${SIBLING_PREFIXES:-}; do
+            exclude_args+=(--exclude "${sib%/}/*")
+          done
+          aws s3 sync "$SRC" "$DEST" --region "$REGION" --delete "${exclude_args[@]}"
 
       - name: Invalidate CloudFront cache
         env:
