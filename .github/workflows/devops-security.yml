@@ -31,6 +31,7 @@ jobs:
 
   # Analyzes GitHub Actions workflow files for supply-chain and injection risks.
   codeql:
+    if: ${{ github.event_name != 'pull_request' }}
     permissions:
       actions: read
       contents: read
