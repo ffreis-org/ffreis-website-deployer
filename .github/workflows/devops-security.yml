@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   gitleaks:
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
@@ -31,6 +32,7 @@ jobs:
 
   # Analyzes GitHub Actions workflow files for supply-chain and injection risks.
   codeql:
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
@@ -41,6 +43,7 @@ jobs:
       source-root: "."
 
   trivy-fs:
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
@@ -51,6 +54,7 @@ jobs:
       upload-sarif: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
 
   grype-fs:
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
@@ -61,6 +65,7 @@ jobs:
       upload-sarif: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
 
   osv:
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
