@@ -392,13 +392,17 @@ jobs:
           else
             DEST="s3://${LIVE_BUCKET}/"
           fi
-          # Exclude sibling deployment prefixes from --delete to avoid wiping
-          # other languages (e.g. PT root deploy must not delete en/*).
-          exclude_args=()
-          for sib in ${SIBLING_PREFIXES:-}; do
-            exclude_args+=(--exclude "${sib%/}/*")
-          done
-          aws s3 sync "$SRC" "$DEST" --region "$REGION" --delete "${exclude_args[@]}"
+          # When there are sibling deployments sharing the same bucket (e.g. PT
+          # and EN on the same bucket, with PT at root and EN at en/), skip
+          # --delete entirely for this deployment. aws s3 sync --delete with
+          # --exclude does not reliably protect sibling prefixes in versioned
+          # buckets, so we prefer to leave orphaned files rather than risk
+          # wiping another language's content.
+          if [[ -n "${SIBLING_PREFIXES:-}" ]]; then
+            aws s3 sync "$SRC" "$DEST" --region "$REGION"
+          else
+            aws s3 sync "$SRC" "$DEST" --region "$REGION" --delete
+          fi
 
       - name: Invalidate CloudFront cache
         env:
