@@ -91,15 +91,17 @@ jobs:
           with open(path) as f:
               cfg = yaml.safe_load(f)
 
-          top_sources  = cfg.get("sources", {})
-          top_website  = top_sources.get("website", {})
-          top_data     = top_sources.get("data",    {})
-          top_compiler = cfg.get("compiler", {})
-          top_builds   = cfg.get("builds",  {})
-          top_publish  = cfg.get("publish", {})
-          top_mode     = cfg.get("deploy_mode", "manual")
-          top_env      = cfg.get("github_environment", "prod")
-          top_cf       = top_publish.get("cloudfront_invalidate_paths", ["/*"])
+          top_sources   = cfg.get("sources", {})
+          top_website   = top_sources.get("website", {})
+          top_data      = top_sources.get("data",    {})
+          top_posts     = top_sources.get("posts",   {})
+          top_compiler  = cfg.get("compiler", {})
+          top_builds    = cfg.get("builds",  {})
+          top_publish   = cfg.get("publish", {})
+          top_mode      = cfg.get("deploy_mode", "manual")
+          top_env       = cfg.get("github_environment", "prod")
+          top_cf        = top_publish.get("cloudfront_invalidate_paths", ["/*"])
+          top_recaptcha = cfg.get("recaptcha_site_key", "")
 
           raw_deployments = cfg.get("deployments", None)
           legacy = raw_deployments is None
@@ -108,6 +110,7 @@ jobs:
               d_src = dep_cfg.get("sources", {})
               d_web = d_src.get("website", {})
               d_dat = d_src.get("data",    {})
+              d_pos = d_src.get("posts",   {})
               d_pub = dep_cfg.get("publish", {})
               d_cf  = d_pub.get("cloudfront_invalidate_paths", top_cf)
               return {
@@ -118,6 +121,8 @@ jobs:
                   "data_repo":        top_data.get("repo", ""),
                   "data_ref":         d_dat.get("ref", top_data.get("ref", "main")),
                   "data_subpath":     d_dat.get("subpath", top_data.get("subpath", "")),
+                  "posts_repo":       d_pos.get("repo", top_posts.get("repo", "")),
+                  "posts_ref":        d_pos.get("ref",  top_posts.get("ref",  "main")),
                   "compiler_repo":    top_compiler.get("repo", ""),
                   "compiler_ref":     top_compiler.get("ref", "main"),
                   "builds_bucket":    top_builds.get("bucket", ""),
@@ -323,14 +328,28 @@ jobs:
           cp -r "${DATA_ROOT}/site.d/." checkout/website/src/data/site.d/
           cp "${DATA_ROOT}/site.yaml"   checkout/website/src/data/
 
+      - name: Checkout posts repo
+        if: matrix.deployment.posts_repo != ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ matrix.deployment.posts_repo }}
+          ref: ${{ matrix.deployment.posts_ref }}
+          path: checkout/posts
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
       - name: Build static site
         run: |
           set -euo pipefail
           mkdir -p dist
+          POSTS_FLAG=""
+          if [[ -n "${{ matrix.deployment.posts_repo }}" && -d "$GITHUB_WORKSPACE/checkout/posts/posts" ]]; then
+            POSTS_FLAG="-posts-dir $GITHUB_WORKSPACE/checkout/posts/posts"
+          fi
           go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/build-static \
             -website-root "$GITHUB_WORKSPACE/checkout/website" \
             -out "$GITHUB_WORKSPACE/dist" \
-            -clean-urls
+            -clean-urls \
+            $POSTS_FLAG
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
