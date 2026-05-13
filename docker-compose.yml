@@ -21,6 +21,7 @@ services:
       - PUBLISH_DRY_RUN
     volumes:
       - ${WORKSPACE_ROOT:-.}:/workspace
+      - ${HOME}/.aws:/root/.aws:ro
     command: ["bash", "-lc", "${PUBLISH_SCRIPT:?set PUBLISH_SCRIPT to the path of publish.sh relative to WORKSPACE_ROOT}"]
 
   invalidator:
@@ -40,4 +41,5 @@ services:
       - CLOUDFRONT_PATHS
     volumes:
       - ${WORKSPACE_ROOT:-.}:/workspace
+      - ${HOME}/.aws:/root/.aws:ro
     command: ["bash", "-lc", "${INVALIDATE_SCRIPT:?set INVALIDATE_SCRIPT to the path of cloudfront-invalidate.sh relative to WORKSPACE_ROOT}"]
