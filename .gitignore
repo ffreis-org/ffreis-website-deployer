@@ -13,3 +13,6 @@
 
 # per-user local deployer configs (contain absolute local paths)
 config/*.local.yaml
+
+scripts/hooks/
+scripts/bootstrap_lefthook.sh
