@@ -341,15 +341,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          POSTS_FLAG=""
+          POSTS_ARGS=()
           if [[ -n "${{ matrix.deployment.posts_repo }}" && -d "$GITHUB_WORKSPACE/checkout/posts/posts" ]]; then
-            POSTS_FLAG="-posts-dir $GITHUB_WORKSPACE/checkout/posts/posts"
+            POSTS_ARGS=("-posts-dir" "$GITHUB_WORKSPACE/checkout/posts/posts")
           fi
           go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/build-static \
             -website-root "$GITHUB_WORKSPACE/checkout/website" \
             -out "$GITHUB_WORKSPACE/dist" \
             -clean-urls \
-            $POSTS_FLAG
+            "${POSTS_ARGS[@]}"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
