@@ -95,6 +95,8 @@ jobs:
           top_website   = top_sources.get("website", {})
           top_data      = top_sources.get("data",    {})
           top_posts     = top_sources.get("posts",   {})
+          top_projects  = top_sources.get("projects", {})
+          top_courses   = top_sources.get("courses",  {})
           top_compiler  = cfg.get("compiler", {})
           top_builds    = cfg.get("builds",  {})
           top_publish   = cfg.get("publish", {})
@@ -111,6 +113,8 @@ jobs:
               d_web = d_src.get("website", {})
               d_dat = d_src.get("data",    {})
               d_pos = d_src.get("posts",   {})
+              d_prj = d_src.get("projects", {})
+              d_crs = d_src.get("courses",  {})
               d_pub = dep_cfg.get("publish", {})
               d_cf  = d_pub.get("cloudfront_invalidate_paths", top_cf)
               return {
@@ -123,6 +127,10 @@ jobs:
                   "data_subpath":     d_dat.get("subpath", top_data.get("subpath", "")),
                   "posts_repo":       d_pos.get("repo", top_posts.get("repo", "")),
                   "posts_ref":        d_pos.get("ref",  top_posts.get("ref",  "main")),
+                  "projects_repo":    d_prj.get("repo", top_projects.get("repo", "")),
+                  "projects_ref":     d_prj.get("ref",  top_projects.get("ref",  "main")),
+                  "courses_repo":     d_crs.get("repo", top_courses.get("repo", "")),
+                  "courses_ref":      d_crs.get("ref",  top_courses.get("ref",  "main")),
                   "compiler_repo":    top_compiler.get("repo", ""),
                   "compiler_ref":     top_compiler.get("ref", "main"),
                   "builds_bucket":    top_builds.get("bucket", ""),
@@ -351,6 +359,24 @@ jobs:
           path: checkout/posts
           token: ${{ secrets.CI_REPO_READ_TOKEN }}
 
+      - name: Checkout projects repo
+        if: matrix.deployment.projects_repo != ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ matrix.deployment.projects_repo }}
+          ref: ${{ matrix.deployment.projects_ref }}
+          path: checkout/projects
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
+      - name: Checkout courses repo
+        if: matrix.deployment.courses_repo != ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ matrix.deployment.courses_repo }}
+          ref: ${{ matrix.deployment.courses_ref }}
+          path: checkout/courses
+          token: ${{ secrets.CI_REPO_READ_TOKEN }}
+
       - name: Build static site
         run: |
           set -euo pipefail
@@ -358,6 +384,14 @@ jobs:
           POSTS_ARGS=()
           if [[ -n "${{ matrix.deployment.posts_repo }}" && -d "$GITHUB_WORKSPACE/checkout/posts/posts" ]]; then
             POSTS_ARGS=("-posts-dir" "$GITHUB_WORKSPACE/checkout/posts/posts")
+          fi
+          PROJECTS_ARGS=()
+          if [[ -n "${{ matrix.deployment.projects_repo }}" && -f "$GITHUB_WORKSPACE/checkout/projects/projects.yaml" ]]; then
+            PROJECTS_ARGS=("-projects-file" "$GITHUB_WORKSPACE/checkout/projects/projects.yaml")
+          fi
+          COURSES_ARGS=()
+          if [[ -n "${{ matrix.deployment.courses_repo }}" && -f "$GITHUB_WORKSPACE/checkout/courses/courses.yaml" ]]; then
+            COURSES_ARGS=("-courses-file" "$GITHUB_WORKSPACE/checkout/courses/courses.yaml")
           fi
           SIBLING_ARGS=()
           SIBLING_PREFIXES="${{ matrix.deployment.sibling_prefixes }}"
@@ -369,6 +403,8 @@ jobs:
             -out "$GITHUB_WORKSPACE/dist" \
             -clean-urls \
             "${POSTS_ARGS[@]}" \
+            "${PROJECTS_ARGS[@]}" \
+            "${COURSES_ARGS[@]}" \
             "${SIBLING_ARGS[@]}"
 
       - name: Configure AWS credentials (OIDC)
