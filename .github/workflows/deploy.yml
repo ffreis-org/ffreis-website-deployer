@@ -345,11 +345,17 @@ jobs:
           if [[ -n "${{ matrix.deployment.posts_repo }}" && -d "$GITHUB_WORKSPACE/checkout/posts/posts" ]]; then
             POSTS_ARGS=("-posts-dir" "$GITHUB_WORKSPACE/checkout/posts/posts")
           fi
+          SIBLING_ARGS=()
+          SIBLING_PREFIXES="${{ matrix.deployment.sibling_prefixes }}"
+          if [[ -n "$SIBLING_PREFIXES" ]]; then
+            SIBLING_ARGS=("-sibling-base-paths" "${SIBLING_PREFIXES// /,}")
+          fi
           go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/build-static \
             -website-root "$GITHUB_WORKSPACE/checkout/website" \
             -out "$GITHUB_WORKSPACE/dist" \
             -clean-urls \
-            "${POSTS_ARGS[@]}"
+            "${POSTS_ARGS[@]}" \
+            "${SIBLING_ARGS[@]}"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
