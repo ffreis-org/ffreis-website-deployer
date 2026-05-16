@@ -238,9 +238,16 @@ jobs:
           set -euo pipefail
           SUBPATH="${{ matrix.deployment.data_subpath }}"
           DATA_ROOT="checkout/data${SUBPATH:+/${SUBPATH%/}}"
+          # shared/ lives alongside the language dirs; derive its parent from DATA_ROOT.
+          # Works whether subpath is "en/" (root layout) or "data/en/" (nested layout).
+          if [[ -n "$SUBPATH" ]]; then
+            DATA_PARENT="$(dirname "${DATA_ROOT}")"
+          else
+            DATA_PARENT="checkout/data"
+          fi
           mkdir -p checkout/website/src/data/site.d
-          if [ -d "checkout/data/shared/site.d" ]; then
-            cp -r checkout/data/shared/site.d/. checkout/website/src/data/site.d/
+          if [ -d "${DATA_PARENT}/shared/site.d" ]; then
+            cp -r "${DATA_PARENT}/shared/site.d/." checkout/website/src/data/site.d/
           fi
           cp -r "${DATA_ROOT}/site.d/." checkout/website/src/data/site.d/
           cp "${DATA_ROOT}/site.yaml"   checkout/website/src/data/
@@ -321,9 +328,16 @@ jobs:
           set -euo pipefail
           SUBPATH="${{ matrix.deployment.data_subpath }}"
           DATA_ROOT="checkout/data${SUBPATH:+/${SUBPATH%/}}"
+          # shared/ lives alongside the language dirs; derive its parent from DATA_ROOT.
+          # Works whether subpath is "en/" (root layout) or "data/en/" (nested layout).
+          if [[ -n "$SUBPATH" ]]; then
+            DATA_PARENT="$(dirname "${DATA_ROOT}")"
+          else
+            DATA_PARENT="checkout/data"
+          fi
           mkdir -p checkout/website/src/data/site.d
-          if [ -d "checkout/data/shared/site.d" ]; then
-            cp -r checkout/data/shared/site.d/. checkout/website/src/data/site.d/
+          if [ -d "${DATA_PARENT}/shared/site.d" ]; then
+            cp -r "${DATA_PARENT}/shared/site.d/." checkout/website/src/data/site.d/
           fi
           cp -r "${DATA_ROOT}/site.d/." checkout/website/src/data/site.d/
           cp "${DATA_ROOT}/site.yaml"   checkout/website/src/data/
