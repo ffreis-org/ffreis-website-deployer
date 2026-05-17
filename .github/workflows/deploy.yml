@@ -133,6 +133,11 @@ jobs:
                   "courses_ref":      d_crs.get("ref",  top_courses.get("ref",  "main")),
                   "compiler_repo":    top_compiler.get("repo", ""),
                   "compiler_ref":     top_compiler.get("ref", "main"),
+                  "compiler_js_inline_threshold":        str(top_compiler["js_inline_threshold"]) if "js_inline_threshold" in top_compiler else "",
+                  "compiler_js_shared_inline_threshold": str(top_compiler["js_shared_inline_threshold"]) if "js_shared_inline_threshold" in top_compiler else "",
+                  "compiler_raster_inline_threshold":    str(top_compiler["raster_inline_threshold"]) if "raster_inline_threshold" in top_compiler else "",
+                  "compiler_embed_fonts":                "true" if top_compiler.get("embed_fonts", False) else "",
+                  "compiler_inline_body_css":            "true" if top_compiler.get("inline_body_css", False) else "",
                   "builds_bucket":    top_builds.get("bucket", ""),
                   "builds_region":    top_builds.get("region", "us-east-1"),
                   "publish_bucket":   d_pub.get("bucket", top_publish.get("bucket", "")),
@@ -398,6 +403,26 @@ jobs:
           if [[ -n "$SIBLING_PREFIXES" ]]; then
             SIBLING_ARGS=("-sibling-base-paths" "${SIBLING_PREFIXES// /,}")
           fi
+          JS_INLINE_ARGS=()
+          if [[ -n "${{ matrix.deployment.compiler_js_inline_threshold }}" ]]; then
+            JS_INLINE_ARGS=("-js-inline-threshold" "${{ matrix.deployment.compiler_js_inline_threshold }}")
+          fi
+          JS_SHARED_INLINE_ARGS=()
+          if [[ -n "${{ matrix.deployment.compiler_js_shared_inline_threshold }}" ]]; then
+            JS_SHARED_INLINE_ARGS=("-js-shared-inline-threshold" "${{ matrix.deployment.compiler_js_shared_inline_threshold }}")
+          fi
+          RASTER_INLINE_ARGS=()
+          if [[ -n "${{ matrix.deployment.compiler_raster_inline_threshold }}" ]]; then
+            RASTER_INLINE_ARGS=("-raster-inline-threshold" "${{ matrix.deployment.compiler_raster_inline_threshold }}")
+          fi
+          EMBED_FONTS_ARGS=()
+          if [[ "${{ matrix.deployment.compiler_embed_fonts }}" == "true" ]]; then
+            EMBED_FONTS_ARGS=("-embed-fonts")
+          fi
+          INLINE_BODY_CSS_ARGS=()
+          if [[ "${{ matrix.deployment.compiler_inline_body_css }}" == "true" ]]; then
+            INLINE_BODY_CSS_ARGS=("-inline-body-css")
+          fi
           go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/build-static \
             -website-root "$GITHUB_WORKSPACE/checkout/website" \
             -out "$GITHUB_WORKSPACE/dist" \
@@ -405,7 +430,12 @@ jobs:
             "${POSTS_ARGS[@]}" \
             "${PROJECTS_ARGS[@]}" \
             "${COURSES_ARGS[@]}" \
-            "${SIBLING_ARGS[@]}"
+            "${SIBLING_ARGS[@]}" \
+            "${JS_INLINE_ARGS[@]}" \
+            "${JS_SHARED_INLINE_ARGS[@]}" \
+            "${RASTER_INLINE_ARGS[@]}" \
+            "${EMBED_FONTS_ARGS[@]}" \
+            "${INLINE_BODY_CSS_ARGS[@]}"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0

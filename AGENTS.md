@@ -25,6 +25,28 @@ website content, inventory, infra, Lambda, or data repos that are not publicly
 listed. Use generic terms instead: "the fleet inventory", "a private consumer",
 "internal infra", "private data repo", etc.
 
+## Compiler embedding flags in inventory YAML
+
+The `compiler` section of each inventory YAML can carry optional fields that control
+how the compiler embeds resources into HTML during CI builds:
+
+```yaml
+compiler:
+  repo: ...
+  ref: main
+  js_inline_threshold: 32768        # optional; compiler default = 8192 (8 KB); 0 = disable
+  js_shared_inline_threshold: 8192  # optional; scripts on >1 page use this lower limit; -1 = off
+  raster_inline_threshold: 2147483647  # optional; compiler default = 0 (disabled); large = all
+  embed_fonts: false                # optional; default false
+  inline_body_css: false            # optional; default false
+```
+
+These fields are site-level (not per-deployment). The `deploy.yml` config job
+extracts them from `top_compiler` and passes them as matrix outputs:
+`compiler_js_inline_threshold`, `compiler_js_shared_inline_threshold`,
+`compiler_raster_inline_threshold`, `compiler_embed_fonts`, `compiler_inline_body_css`.
+The build step converts them into the matching compiler flags.
+
 ## Keeping this file current
 
 - **If you discover a fact not reflected here:** add it before finishing your task.
