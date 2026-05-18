@@ -54,7 +54,7 @@ jobs:
           repo = os.environ["REPO"]
           errors = []
 
-          for path in sorted(glob.glob("*.yaml")):
+          for path in sorted(glob.glob("**/*.yaml", recursive=True)):
               with open(path) as f:
                   cfg = yaml.safe_load(f)
               if not isinstance(cfg, dict):
