@@ -78,16 +78,17 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PYEOF'
-          import yaml, os, sys, json
+          import yaml, os, sys, json, glob
 
           name              = os.environ["WEBSITE_NAME"]
           deployment_filter = os.environ.get("DEPLOYMENT_NAME", "").strip()
           event             = os.environ["GITHUB_EVENT_NAME"]
 
-          path = f"{name}.yaml"
-          if not os.path.exists(path):
-              print(f"Inventory file not found: {path}", file=sys.stderr)
+          matches = glob.glob(f"**/{name}.yaml", recursive=True)
+          if not matches:
+              print(f"Inventory file not found: {name}.yaml (searched recursively)", file=sys.stderr)
               sys.exit(1)
+          path = matches[0]
           with open(path) as f:
               cfg = yaml.safe_load(f)
 
@@ -169,7 +170,7 @@ jobs:
               selected = [d for d in all_deps if d["name"] == deployment_filter]
               if not selected:
                   avail = [d["name"] for d in all_deps]
-                  print(f"deployment '{deployment_filter}' not found in {name}.yaml; available: {avail}", file=sys.stderr)
+                  print(f"deployment '{deployment_filter}' not found in {path}; available: {avail}", file=sys.stderr)
                   sys.exit(1)
           elif event == "workflow_dispatch":
               selected = all_deps
