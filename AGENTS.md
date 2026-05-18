@@ -17,6 +17,55 @@ Architecture detail (CI/CD job graph, design decisions): `AGENTS.md` links to
 Do not look for cross-component flow documentation in this repo's README;
 it covers only the deployer's own workflows and local runtime.
 
+## Branching Model and Environment Separation
+
+### Core rule
+
+The `website_name` input to `deploy.yml` is the sole join point between a source-repo push and the AWS resources it touches. It determines which inventory YAML is read, which GitHub environment resolves secrets, which S3 bucket receives the build, and which CloudFront distribution is invalidated.
+
+```
+push to develop  →  website_name = <site>-dev  →  <site>-dev.yaml  →  github_environment: <site>-dev  →  dev AWS resources
+push to main     →  website_name = <site>       →  <site>.yaml       →  github_environment: prod          →  prod AWS resources
+```
+
+### GitHub environments on this repo
+
+| GitHub environment | Site | AWS resources |
+|---|---|---|
+| `prod` | flemming | `flemming-*-prod`, `flemming.com.br` |
+| `flemming-dev` | flemming-dev | `flemming-*-dev`, `flemming.ffreis.com` |
+| `petlook-prod` | petlook | `petlook-*-prod`, `petlook.app` |
+| `petlook-dev` | petlook-dev | `petlook-*-dev`, `petlook.ffreis.com` |
+| `ffreis-prod` | ffreis | `ffreis-*-prod`, `ffreis.com` |
+| `ffreis-dev` | ffreis-dev | `ffreis-*-dev`, `dev.ffreis.com` |
+
+Each environment holds independent secrets: `AWS_DEPLOY_ROLE_ARN`, `CF_DISTRIBUTION_ID`, `S3_WEBSITE_BUCKET`.
+
+### Why a PR into `develop` cannot deploy to production
+
+1. Deploy jobs in source repos fire only on `push` events, not `pull_request`.
+2. Push to `develop` → dispatch fires `website_name=<site>-dev`.
+3. `<site>-dev.yaml` declares `github_environment: <site>-dev`.
+4. `<site>-dev` holds the dev OIDC role ARN, which has IAM permissions only on dev S3/CloudFront.
+5. No path from step 2 touches prod resources.
+
+### Why a PR into `main` cannot use dev config
+
+1. A PR into `main` only runs validation CI — no dispatch step fires.
+2. Once merged: push to `main` → dispatch fires `website_name=<site>`.
+3. `<site>.yaml` declares the prod GitHub environment. Dev inventory files are never read.
+
+### Adding a new site environment
+
+1. Create `<site>-dev.yaml` in the fleet inventory with `github_environment: <site>-dev`.
+2. Create the `<site>-dev` GitHub environment on this repo. Add secrets from dev Terraform outputs.
+3. Update source repo CI to dispatch `<site>-dev` on develop, `<site>` on main.
+4. Validate with `workflow_dispatch` → `website_name=<site>-dev` before setting `deploy_mode: auto`.
+
+### watch.yml and dev sites
+
+`watch.yml` dispatches all inventory files with at least one `deploy_mode: auto` deployment, including dev files. Dev environments with `auto` deployments are kept fresh automatically alongside prod.
+
 ## Public repo — private-repo hygiene
 
 This is a **public** GitHub repository. When writing commit messages, PR titles,
