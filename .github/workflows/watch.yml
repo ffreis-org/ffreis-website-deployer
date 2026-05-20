@@ -19,6 +19,7 @@ on:
 permissions:
   contents: read
   actions: write  # allows triggering workflow_dispatch on this repo via API
+  issues: write   # allows creating issues on dispatch failure
 
 concurrency:
   group: watch
@@ -101,3 +102,13 @@ jobs:
                   print(f"  {e}", file=sys.stderr)
               sys.exit(1)
           PYEOF
+
+      - name: Create issue on dispatch failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "watch: dispatch failure(s) on $(date +%Y-%m-%d)" \
+            --body "The daily auto-deploy watch job failed. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details." \
+            || true
