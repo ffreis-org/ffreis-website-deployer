@@ -146,6 +146,7 @@ jobs:
                   "cloudfront_paths": " ".join(d_cf),
                   "github_env":       dep_cfg.get("github_environment", top_env),
                   "staging_prefix":   f"{name}/{dep_name}" if not legacy else name,
+                  "smoke_paths":      " ".join(dep_cfg.get("smoke_paths", top_publish.get("smoke_paths", ["/"]))),
               }
 
           if not legacy:
@@ -511,6 +512,52 @@ jobs:
             aws s3 sync "$SRC" "$DEST" --region "$REGION"
           else
             aws s3 sync "$SRC" "$DEST" --region "$REGION" --delete
+          fi
+
+      - name: Smoke test — verify live site is reachable
+        env:
+          CF_DISTRIBUTION_ID: ${{ secrets.CF_DISTRIBUTION_ID }}
+          GITHUB_ENV_NAME:    ${{ matrix.deployment.github_env }}
+          SMOKE_PATHS:        ${{ matrix.deployment.smoke_paths }}
+        run: |
+          set -euo pipefail
+          IS_DEV=0
+          [[ "$GITHUB_ENV_NAME" == *"-dev" ]] && IS_DEV=1
+          # Resolve primary domain: first non-www alias, or the CloudFront *.cloudfront.net domain.
+          ALIASES=$(aws cloudfront get-distribution \
+            --id "$CF_DISTRIBUTION_ID" \
+            --query 'Distribution.DistributionConfig.Aliases.Items' \
+            --output json 2>/dev/null || echo "null")
+          if [[ "$ALIASES" == "null" || "$ALIASES" == "[]" ]]; then
+            DOMAIN=$(aws cloudfront get-distribution \
+              --id "$CF_DISTRIBUTION_ID" \
+              --query 'Distribution.DomainName' --output text)
+          else
+            DOMAIN=$(python3 -c "
+          import sys, json
+          aliases = json.loads('${ALIASES}')
+          print(next((a for a in aliases if not a.startswith('www.')), aliases[0]))
+          ")
+          fi
+          LIVE_URL="https://${DOMAIN}"
+          echo "Smoke testing ${LIVE_URL} (paths: ${SMOKE_PATHS}) ..."
+          FAIL=0
+          for path in $SMOKE_PATHS; do
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 --connect-timeout 5 \
+              --location "${LIVE_URL}${path}" || echo "000")
+            if [[ "$STATUS" =~ ^[23] ]]; then
+              echo "  ok   ${path} → ${STATUS}"
+            elif [[ "$IS_DEV" -eq 1 && "$STATUS" == "403" ]]; then
+              # Dev WAF IP allowlists block GH Actions runners — 403 is expected.
+              echo "  skip ${path} → ${STATUS} (WAF block, dev env)"
+            else
+              echo "  FAIL ${path} → ${STATUS}"
+              FAIL=1
+            fi
+          done
+          if [[ "$FAIL" -eq 1 ]]; then
+            echo "Smoke test failed — the live site returned an unexpected status after promotion." >&2
+            exit 1
           fi
 
       - name: Invalidate CloudFront cache
