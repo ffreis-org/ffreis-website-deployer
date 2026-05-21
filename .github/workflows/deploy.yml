@@ -24,7 +24,7 @@ on:
 # Never cancel a running deploy mid-flight. Queue the next one instead.
 concurrency:
   group: deploy-${{ inputs.website_name || github.event.client_payload.website_name }}-${{ inputs.deployment_name || github.event.client_payload.deployment_name || 'all' }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 
 
