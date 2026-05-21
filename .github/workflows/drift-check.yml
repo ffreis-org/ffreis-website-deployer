@@ -1,0 +1,86 @@
+name: Dev → Prod Drift Check
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Monday 09:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: drift-check
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    timeout-minutes: 10
+    name: Check develop → main drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: Check commit drift across source repos
+        id: drift
+        env:
+          GH_TOKEN: ${{ secrets.CI_REPO_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import subprocess, sys, os
+
+          REPOS = [
+            "FelipeFuhr/ffreis-website",
+            "FelipeFuhr/ffreis-website-data",
+            "FelipeFuhr/flemming-website",
+            "FelipeFuhr/flemming-data",
+            "FelipeFuhr/petlook-website",
+            "FelipeFuhr/petlook-data",
+          ]
+          ALERT_THRESHOLD = 10  # commits ahead triggers alert
+
+          stale = []
+          for repo in REPOS:
+              result = subprocess.run(
+                  ["gh", "api", f"repos/{repo}/compare/main...develop", "--jq", ".ahead_by"],
+                  capture_output=True, text=True,
+              )
+              if result.returncode != 0:
+                  print(f"Warning: could not compare {repo}: {result.stderr.strip()}")
+                  continue
+              try:
+                  ahead = int(result.stdout.strip() or "0")
+              except ValueError:
+                  continue
+              status = "ALERT" if ahead >= ALERT_THRESHOLD else "ok"
+              print(f"[{status}] {repo}: develop is {ahead} commits ahead of main")
+              if ahead >= ALERT_THRESHOLD:
+                  stale.append(f"{repo}: {ahead} commits")
+
+          if stale:
+              print(f"\n{len(stale)} repo(s) have significant drift (>= {ALERT_THRESHOLD} commits):")
+              for s in stale:
+                  print(f"  {s}")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  body = "One or more source repos have {} or more commits on develop not yet promoted to main. Review and promote when ready.\n\n".format(ALERT_THRESHOLD)
+                  body += "\n".join(f"- {s}" for s in stale)
+                  f.write(f"stale_body={body}\n")
+              sys.exit(1)
+          else:
+              print("All repos are within threshold — no action needed.")
+          PYEOF
+
+      - name: Open issue on significant drift
+        if: failure() && steps.drift.conclusion == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Dev → prod drift alert — $(date +%Y-%m-%d)" \
+            --body "One or more source repos have 10+ commits on \`develop\` not yet promoted to \`main\`. Review and promote when ready." \
+            --label "automated" \
+            2>&1 | tail -1 || echo "Note: could not create issue (label may not exist)"
