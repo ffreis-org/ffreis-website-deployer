@@ -522,8 +522,15 @@ jobs:
           SMOKE_PATHS:        ${{ matrix.deployment.smoke_paths }}
         run: |
           set -euo pipefail
-          IS_DEV=0
-          [[ "$GITHUB_ENV_NAME" == *"-dev" ]] && IS_DEV=1
+          # Dev environments have WAF IP allowlists that block GH Actions runners.
+          # Additionally, CloudFront custom_error_response maps WAF-403 → 404, so
+          # the actual status code is unpredictable for dev. Skip smoke tests for dev;
+          # the successful Build & Upload Artifact job already validates OIDC auth and
+          # S3 write permissions — which is the meaningful deployment check.
+          if [[ "$GITHUB_ENV_NAME" == *"-dev" ]]; then
+            echo "Skipping smoke test for dev environment (WAF IP allowlist active; CloudFront converts WAF-403 to 404)."
+            exit 0
+          fi
           # Resolve primary domain: first non-www alias, or the CloudFront *.cloudfront.net domain.
           ALIASES=$(aws cloudfront get-distribution \
             --id "$CF_DISTRIBUTION_ID" \
@@ -548,9 +555,6 @@ jobs:
               --location "${LIVE_URL}${path}" || echo "000")
             if [[ "$STATUS" =~ ^[23] ]]; then
               echo "  ok   ${path} → ${STATUS}"
-            elif [[ "$IS_DEV" -eq 1 && "$STATUS" == "403" ]]; then
-              # Dev WAF IP allowlists block GH Actions runners — 403 is expected.
-              echo "  skip ${path} → ${STATUS} (WAF block, dev env)"
             else
               echo "  FAIL ${path} → ${STATUS}"
               FAIL=1
