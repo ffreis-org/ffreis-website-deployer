@@ -534,9 +534,9 @@ jobs:
               --id "$CF_DISTRIBUTION_ID" \
               --query 'Distribution.DomainName' --output text)
           else
-            DOMAIN=$(python3 -c "
-          import sys, json
-          aliases = json.loads('${ALIASES}')
+            DOMAIN=$(ALIASES_JSON="$ALIASES" python3 -c "
+          import json, os
+          aliases = json.loads(os.environ['ALIASES_JSON'])
           print(next((a for a in aliases if not a.startswith('www.')), aliases[0]))
           ")
           fi
