@@ -207,6 +207,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout data repo
+        if: matrix.deployment.data_repo != ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ matrix.deployment.data_repo }}
@@ -249,6 +250,7 @@ jobs:
           echo "Could not detect compiler layout under checkout/compiler" >&2; exit 1
 
       - name: Inject data into website
+        if: matrix.deployment.data_repo != ''
         run: |
           set -euo pipefail
           SUBPATH="${{ matrix.deployment.data_subpath }}"
@@ -297,6 +299,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout data repo
+        if: matrix.deployment.data_repo != ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ matrix.deployment.data_repo }}
@@ -339,6 +342,7 @@ jobs:
           echo "Could not detect compiler layout under checkout/compiler" >&2; exit 1
 
       - name: Inject data into website
+        if: matrix.deployment.data_repo != ''
         run: |
           set -euo pipefail
           SUBPATH="${{ matrix.deployment.data_subpath }}"
