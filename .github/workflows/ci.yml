@@ -13,9 +13,6 @@ on:
       - 'Makefile'
       - 'lefthook.yml'
 
-permissions:
-  contents: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,6 +21,8 @@ jobs:
   actionlint:
     timeout-minutes: 15
     name: Lint Workflows
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
 
     steps:

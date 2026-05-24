@@ -16,11 +16,6 @@ on:
     - cron: "0 6 * * *"  # daily at 06:00 UTC
   workflow_dispatch:
 
-permissions:
-  contents: read
-  actions: write  # allows triggering workflow_dispatch on this repo via API
-  issues: write   # allows creating issues on dispatch failure
-
 concurrency:
   group: watch
   cancel-in-progress: true
@@ -29,6 +24,10 @@ jobs:
   watch:
     timeout-minutes: 15
     name: Dispatch Auto Deployments
+    permissions:
+      contents: read
+      actions: write  # allows triggering workflow_dispatch on this repo via API
+      issues: write   # allows creating issues on dispatch failure
     runs-on: ubuntu-latest
 
     steps:

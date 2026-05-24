@@ -9,14 +9,13 @@ concurrency:
   group: drift-check
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  issues: write
-
 jobs:
   drift:
     timeout-minutes: 10
     name: Check develop → main drift
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
