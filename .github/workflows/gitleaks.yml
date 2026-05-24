@@ -5,17 +5,16 @@ on:
   push:
     branches: [main, master]
 
-permissions:
-  actions: read
-  contents: read
-  security-events: write
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   gitleaks:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
     uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-gitleaks.yml@main
     with:
       working-directory: .

@@ -26,11 +26,6 @@ concurrency:
   group: deploy-${{ inputs.website_name || github.event.client_payload.website_name }}-${{ inputs.deployment_name || github.event.client_payload.deployment_name || 'all' }}
   cancel-in-progress: false
 
-
-
-permissions:
-  contents: read
-
 jobs:
   # ── config ────────────────────────────────────────────────────────────────
   # Reads <website_name>.yaml from websites-inventory and resolves the list of
@@ -199,6 +194,8 @@ jobs:
     if: needs.config.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
     environment: prod
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
