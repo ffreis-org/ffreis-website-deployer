@@ -148,6 +148,10 @@ jobs:
                   "github_env":       dep_cfg.get("github_environment", top_env),
                   "staging_prefix":   f"{name}/{dep_name}" if not legacy else name,
                   "smoke_paths":      " ".join(dep_cfg.get("smoke_paths", top_publish.get("smoke_paths", ["/"]))),
+                  # IP-restricted sites (WAF-allowlist on prod, not just dev) need to skip
+                  # smoke since GH runner IPs aren't in the allowlist. Set in inventory at
+                  # publish.skip_smoke: true (or per-deployment override).
+                  "skip_smoke":       "true" if dep_cfg.get("skip_smoke", top_publish.get("skip_smoke", False)) else "",
               }
 
           if not legacy:
@@ -524,6 +528,7 @@ jobs:
           CF_DISTRIBUTION_ID: ${{ secrets.CF_DISTRIBUTION_ID }}
           GITHUB_ENV_NAME:    ${{ matrix.deployment.github_env }}
           SMOKE_PATHS:        ${{ matrix.deployment.smoke_paths }}
+          SKIP_SMOKE:         ${{ matrix.deployment.skip_smoke }}
         run: |
           set -euo pipefail
           # Dev environments have WAF IP allowlists that block GH Actions runners.
@@ -533,6 +538,14 @@ jobs:
           # S3 write permissions — which is the meaningful deployment check.
           if [[ "$GITHUB_ENV_NAME" == *"-dev" ]]; then
             echo "Skipping smoke test for dev environment (WAF IP allowlist active; CloudFront converts WAF-403 to 404)."
+            exit 0
+          fi
+          # Inventory opt-in for IP-restricted prod sites (e.g. dashboard.ffreis.com).
+          # The GH runner IP isn't in the WAF allowlist so smoke would always fail.
+          # Build + S3 upload + CloudFront invalidation succeeding is the meaningful
+          # check for these sites. Set publish.skip_smoke: true in inventory yaml.
+          if [[ "$SKIP_SMOKE" == "true" ]]; then
+            echo "Skipping smoke test (inventory publish.skip_smoke=true; IP-restricted prod site)."
             exit 0
           fi
           # Resolve primary domain: first non-www alias, or the CloudFront *.cloudfront.net domain.
