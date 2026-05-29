@@ -33,11 +33,11 @@ push to main     →  website_name = <site>       →  <site>.yaml       →  gi
 | GitHub environment | Site | AWS resources |
 |---|---|---|
 | `prod` | flemming | `flemming-*-prod`, `flemming.com.br` |
-| `flemming-dev` | flemming-dev | `flemming-*-dev`, `flemming.ffreis.com` |
+| `flemming-dev` | flemming-dev | `flemming-*-dev`, `<dev-domain>` |
 | `petlook-prod` | petlook | `petlook-*-prod`, `petlook.app` |
-| `petlook-dev` | petlook-dev | `petlook-*-dev`, `petlook.ffreis.com` |
+| `petlook-dev` | petlook-dev | `petlook-*-dev`, `<dev-domain>` |
 | `ffreis-prod` | ffreis | `ffreis-*-prod`, `ffreis.com` |
-| `ffreis-dev` | ffreis-dev | `ffreis-*-dev`, `dev.ffreis.com` |
+| `ffreis-dev` | ffreis-dev | `ffreis-*-dev`, `<dev-domain>` |
 
 Each environment holds independent secrets: `AWS_DEPLOY_ROLE_ARN`, `CF_DISTRIBUTION_ID`, `S3_WEBSITE_BUCKET`.
 
