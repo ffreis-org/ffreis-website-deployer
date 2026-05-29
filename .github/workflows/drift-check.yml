@@ -26,20 +26,21 @@ jobs:
       - name: Check commit drift across source repos
         id: drift
         env:
-          GH_TOKEN: ${{ secrets.CI_REPO_READ_TOKEN }}
+          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+          DRIFT_CHECK_REPOS: ${{ vars.DRIFT_CHECK_REPOS }}
         run: |
           set -euo pipefail
           python3 - <<'PYEOF'
           import subprocess, sys, os
 
-          REPOS = [
-            "FelipeFuhr/ffreis-website",
-            "FelipeFuhr/ffreis-website-data",
-            "FelipeFuhr/flemming-website",
-            "FelipeFuhr/flemming-data",
-            "FelipeFuhr/petlook-website",
-            "FelipeFuhr/petlook-data",
-          ]
+          # Repo list is configured via the DRIFT_CHECK_REPOS repository variable
+          # (GitHub UI: Settings > Variables > Actions) as a JSON array.
+          import json, os
+          _repos_var = os.environ.get("DRIFT_CHECK_REPOS", "[]")
+          REPOS = json.loads(_repos_var) if _repos_var.strip() else []
+          if not REPOS:
+              print("DRIFT_CHECK_REPOS variable is empty or not set — nothing to check.")
+              import sys; sys.exit(0)
           ALERT_THRESHOLD = 10  # commits ahead triggers alert
 
           stale = []
