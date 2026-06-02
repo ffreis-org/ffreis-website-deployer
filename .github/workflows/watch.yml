@@ -13,7 +13,7 @@ name: Watch — Auto Deploy
 
 on:
   schedule:
-    - cron: "0 6 * * *"  # daily at 06:00 UTC
+    - cron: "51 13 1 * *"  # monthly scattered (was: 0 6 * * *)
   workflow_dispatch:
 
 concurrency:
