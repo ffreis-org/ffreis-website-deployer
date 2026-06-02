@@ -2,7 +2,7 @@ name: Dev → Prod Drift Check
 
 on:
   schedule:
-    - cron: "0 9 * * 1"  # Monday 09:00 UTC
+    - cron: "57 14 3 * *"  # monthly scattered (was: 0 9 * * 1)
   workflow_dispatch:
 
 concurrency:

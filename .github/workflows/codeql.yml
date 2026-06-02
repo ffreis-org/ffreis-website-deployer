@@ -2,7 +2,7 @@ name: CodeQL
 
 on:
   schedule:
-    - cron: "34 23 * * 0"
+    - cron: "31 0 12 * *"  # monthly scattered (was: 34 23 * * 0)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
