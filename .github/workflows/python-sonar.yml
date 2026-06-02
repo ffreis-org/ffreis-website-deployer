@@ -37,6 +37,11 @@ on:
         description: "Name of a coverage artifact uploaded by python-coverage.yml (skips regeneration)"
         type: string
         default: ""
+      run_on_draft:
+        description: "Run even on draft PRs (default: skip on draft to save CI minutes)"
+        required: false
+        type: boolean
+        default: false
     secrets:
       SONAR_TOKEN:
         required: true

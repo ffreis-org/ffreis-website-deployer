@@ -8,6 +8,7 @@ on:
       - 'Makefile'
       - 'lefthook.yml'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '.github/workflows/**'
       - 'Makefile'
@@ -19,6 +20,7 @@ concurrency:
 
 jobs:
   actionlint:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     timeout-minutes: 15
     name: Lint Workflows
     permissions:
