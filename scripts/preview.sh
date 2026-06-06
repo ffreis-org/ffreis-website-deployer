@@ -35,7 +35,8 @@ fi
 # pyyaml is auto-installed if missing (only happens once, cached in pip).
 # ---------------------------------------------------------------------------
 yaml_get() {
-  python3 - "${INVENTORY}" "$1" <<'PY'
+  local key="$1"
+  python3 - "${INVENTORY}" "${key}" <<'PY'
 import sys
 
 try:
