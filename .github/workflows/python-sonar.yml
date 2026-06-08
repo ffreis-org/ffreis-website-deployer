@@ -84,7 +84,7 @@ jobs:
           UV_EXTRAS: ${{ inputs.uv-extras }}
         run: |
           set -euo pipefail
-          uv sync --frozen --extra "$UV_EXTRAS"
+          uv sync --frozen --no-build --extra "$UV_EXTRAS"
 
       - name: Download coverage artifact
         if: inputs.coverage-artifact-name != ''
