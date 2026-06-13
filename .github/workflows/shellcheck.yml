@@ -14,6 +14,6 @@ jobs:
   shellcheck:
     permissions:
       contents: read
-    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-shellcheck.yml@main
+    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-shellcheck.yml@ce7169b36bd25b1c4c0c8077aa78ecde6d6ca7d5 # v1.6.0
     with:
       working-directory: .
