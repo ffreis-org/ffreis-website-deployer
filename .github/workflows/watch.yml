@@ -11,6 +11,8 @@ name: Watch — Auto Deploy
 # Required: GITHUB_TOKEN with actions: write (automatic) and
 #           CI_REPO_READ_TOKEN to check out the private inventory repo.
 
+permissions: {}
+
 on:
   schedule:
     - cron: "51 13 1 * *"  # monthly scattered (was: 0 6 * * *)

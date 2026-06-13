@@ -1,5 +1,7 @@
 name: DevOps / Stale
 
+permissions: {}
+
 on:
   schedule:
     - cron: "10 14 15 * *"  # monthly scattered (was: 0 6 * * 1)

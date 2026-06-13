@@ -1,5 +1,7 @@
 name: Dev → Prod Drift Check
 
+permissions: {}
+
 on:
   schedule:
     - cron: "57 14 3 * *"  # monthly scattered (was: 0 9 * * 1)

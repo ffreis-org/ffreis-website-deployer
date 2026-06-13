@@ -1,5 +1,7 @@
 name: Scorecard supply-chain security
 
+permissions: {}
+
 on:
   branch_protection_rule:
   schedule:
