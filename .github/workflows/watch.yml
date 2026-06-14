@@ -11,6 +11,8 @@ name: Watch — Auto Deploy
 # Required: GITHUB_TOKEN with actions: write (automatic) and
 #           CI_REPO_READ_TOKEN to check out the private inventory repo.
 
+permissions: {}
+
 on:
   schedule:
     - cron: "51 13 1 * *"  # monthly scattered (was: 0 6 * * *)
@@ -106,8 +108,11 @@ jobs:
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_SERVER_URL: ${{ github.server_url }}
+          GH_REPO: ${{ github.repository }}
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
           gh issue create \
             --title "watch: dispatch failure(s) on $(date +%Y-%m-%d)" \
-            --body "The daily auto-deploy watch job failed. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details." \
+            --body "The daily auto-deploy watch job failed. Check the [workflow run](${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}) for details." \
             || true

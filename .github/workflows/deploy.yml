@@ -1,5 +1,7 @@
 name: Deploy
 
+permissions: {}
+
 on:
   repository_dispatch:
     types: [website-deploy-request]

@@ -1,5 +1,7 @@
 name: DevOps / Automation
 
+permissions: {}
+
 on:
   schedule:
     - cron: "56 11 1 * *"  # monthly scattered (was: 0 3 * * 0)
@@ -19,7 +21,7 @@ jobs:
       actions: read
       security-events: write
       id-token: write
-    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-scorecard.yml@main
+    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-scorecard.yml@0aa2f6932831848d438834938acefcd98bc05c42 # post-v1.6.0
     with:
       upload-sarif: true
 
@@ -29,7 +31,7 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-stale.yml@main
+    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-stale.yml@0aa2f6932831848d438834938acefcd98bc05c42 # post-v1.6.0
     with:
       only: "both"
 
@@ -38,7 +40,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-release-please.yml@main
+    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-release-please.yml@0aa2f6932831848d438834938acefcd98bc05c42 # post-v1.6.0
     with:
       target-branch: "main"
     secrets:
