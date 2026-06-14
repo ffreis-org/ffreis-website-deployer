@@ -147,6 +147,10 @@ jobs:
                   # smoke since GH runner IPs aren't in the allowlist. Set in inventory at
                   # publish.skip_smoke: true (or per-deployment override).
                   "skip_smoke":       "true" if dep_cfg.get("skip_smoke", top_publish.get("skip_smoke", False)) else "",
+                  # Emit a per-language content bundle for native mobile apps (petlook-mobile).
+                  # When true the build step runs emit-content-bundle and the output rides the
+                  # existing S3 sync under dist/content-bundle/. Top-level only; not per-deployment.
+                  "emit_content_bundle": "true" if cfg.get("emit_content_bundle", False) else "",
               }
 
           if not legacy:
@@ -443,6 +447,19 @@ jobs:
             "${RASTER_INLINE_ARGS[@]}" \
             "${EMBED_FONTS_ARGS[@]}" \
             "${INLINE_BODY_CSS_ARGS[@]}"
+
+      - name: Emit content bundle
+        if: matrix.deployment.emit_content_bundle == 'true'
+        run: |
+          set -euo pipefail
+          # Capture the data repo's actual HEAD SHA so the bundle records the source revision.
+          DATA_SHA="$(git -C "$GITHUB_WORKSPACE/checkout/data" rev-parse HEAD)"
+          go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/emit-content-bundle \
+            -data-root "$GITHUB_WORKSPACE/checkout/data/data" \
+            -langs "${{ matrix.deployment.name }}" \
+            -out "$GITHUB_WORKSPACE/dist/content-bundle" \
+            -source-sha "$DATA_SHA" \
+            -generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
