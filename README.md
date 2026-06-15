@@ -1,5 +1,9 @@
 # website-deployer
 
+<!-- ffreis-badges:start -->
+[![CI](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FelipeFuhr/ffreis-badges/main/badges/ffreis-website-deployer/ci.json)](https://github.com/FelipeFuhr/ffreis-website-deployer/actions) [![License](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FelipeFuhr/ffreis-badges/main/badges/ffreis-website-deployer/license.json)](https://github.com/FelipeFuhr/ffreis-website-deployer/blob/main/LICENSE)
+<!-- ffreis-badges:end -->
+
 Centralized deployment authority for all websites in the fleet.
 
 One workflow per website. Deploy mode (`auto` / `manual`) is controlled by the
