@@ -154,6 +154,10 @@ jobs:
                   # When true the build step runs emit-content-bundle and the output rides the
                   # existing S3 sync under dist/content-bundle/. Top-level only; not per-deployment.
                   "emit_content_bundle": "true" if cfg.get("emit_content_bundle", False) else "",
+                  # Shared JS package injected into the site's src/assets/js/ before compilation.
+                  # Set sources.shared_js: {repo: ..., ref: ...} in the inventory YAML.
+                  "shared_js_repo": top_sources.get("shared_js", {}).get("repo", ""),
+                  "shared_js_ref":  top_sources.get("shared_js", {}).get("ref",  "main"),
               }
 
           if not legacy:
@@ -370,6 +374,22 @@ jobs:
           fi
           cp -r "${DATA_ROOT}/site.d/." checkout/website/src/data/site.d/
           cp "${DATA_ROOT}/site.yaml"   checkout/website/src/data/
+
+      - name: Checkout shared JS repo
+        if: matrix.deployment.shared_js_repo != ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ matrix.deployment.shared_js_repo }}
+          ref: ${{ matrix.deployment.shared_js_ref }}
+          path: checkout/shared-js
+          token: ${{ secrets.FLEET_READ_TOKEN }}
+
+      - name: Inject shared JS into website
+        if: matrix.deployment.shared_js_repo != ''
+        run: |
+          set -euo pipefail
+          mkdir -p checkout/website/src/assets/js
+          cp checkout/shared-js/*.js checkout/website/src/assets/js/
 
       - name: Checkout posts repo
         if: matrix.deployment.posts_repo != ''
