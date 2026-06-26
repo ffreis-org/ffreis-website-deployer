@@ -103,6 +103,7 @@ jobs:
           top_env       = cfg.get("github_environment", "prod")
           top_cf        = top_publish.get("cloudfront_invalidate_paths", ["/*"])
           top_recaptcha = cfg.get("recaptcha_site_key", "")
+          top_tracker   = cfg.get("tracker", {})
 
           raw_deployments = cfg.get("deployments", None)
           legacy = raw_deployments is None
@@ -158,6 +159,14 @@ jobs:
                   # Set sources.shared_js: {repo: ..., ref: ...} in the inventory YAML.
                   "shared_js_repo": top_sources.get("shared_js", {}).get("repo", ""),
                   "shared_js_ref":  top_sources.get("shared_js", {}).get("ref",  "main"),
+                  # ffreis-tracker-sdk injection. Set tracker: {enabled, sdk_version, site_id,
+                  # endpoint, cdn_base} in the inventory YAML. All values are top-level only
+                  # (not per-deployment) — the same SDK version and endpoint serve all langs.
+                  "tracker_enabled":     "true" if top_tracker.get("enabled", False) else "",
+                  "tracker_sdk_version": top_tracker.get("sdk_version", ""),
+                  "tracker_site_id":     top_tracker.get("site_id", ""),
+                  "tracker_endpoint":    top_tracker.get("endpoint", ""),
+                  "tracker_cdn_base":    top_tracker.get("cdn_base", ""),
               }
 
           if not legacy:
@@ -459,6 +468,18 @@ jobs:
           if [[ "${{ matrix.deployment.compiler_inline_body_css }}" == "true" ]]; then
             INLINE_BODY_CSS_ARGS=("-inline-body-css")
           fi
+          TRACKER_ARGS=()
+          if [[ "${{ matrix.deployment.tracker_enabled }}" == "true" ]]; then
+            TRACKER_ARGS=(
+              "-tracker-enabled"
+              "-tracker-sdk-version" "${{ matrix.deployment.tracker_sdk_version }}"
+              "-tracker-site-id"     "${{ matrix.deployment.tracker_site_id }}"
+              "-tracker-endpoint"    "${{ matrix.deployment.tracker_endpoint }}"
+            )
+            if [[ -n "${{ matrix.deployment.tracker_cdn_base }}" ]]; then
+              TRACKER_ARGS+=("-tracker-cdn-base" "${{ matrix.deployment.tracker_cdn_base }}")
+            fi
+          fi
           go -C "${{ steps.compiler.outputs.dir }}" run ./cmd/build-static \
             -website-root "$GITHUB_WORKSPACE/checkout/website" \
             -out "$GITHUB_WORKSPACE/dist" \
@@ -471,7 +492,8 @@ jobs:
             "${JS_SHARED_INLINE_ARGS[@]}" \
             "${RASTER_INLINE_ARGS[@]}" \
             "${EMBED_FONTS_ARGS[@]}" \
-            "${INLINE_BODY_CSS_ARGS[@]}"
+            "${INLINE_BODY_CSS_ARGS[@]}" \
+            "${TRACKER_ARGS[@]}"
 
       - name: Emit content bundle
         if: matrix.deployment.emit_content_bundle == 'true'
