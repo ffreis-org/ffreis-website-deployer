@@ -74,6 +74,24 @@ website content, inventory, infra, Lambda, or data repos that are not publicly
 listed. Use generic terms instead: "the fleet inventory", "a private consumer",
 "internal infra", "private data repo", etc.
 
+## Content source selection
+
+Each inventory YAML may carry a top-level `content_source` field (default: `prod`):
+
+```yaml
+content_source: mock   # "prod" (default) or "mock"
+```
+
+When `content_source: mock`, the `config` job validates the field is only used on
+dev environments (`github_environment` ending in `-dev`) — any other combination is
+a fatal error. The build step then swaps the content paths to `mock/` subdirectories:
+- posts: `checkout/posts/mock/posts/`
+- projects: `checkout/projects/mock/projects.yaml`
+- courses: `checkout/courses/mock/courses.yaml`
+
+It also passes `-content-source mock` to the compiler, which enforces the anti-leak
+guard at build time: the compiler rejects any `/mock/` path when not in mock mode.
+
 ## Compiler embedding flags in inventory YAML
 
 The `compiler` section of each inventory YAML can carry optional fields that control
