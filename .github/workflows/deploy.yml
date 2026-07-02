@@ -104,6 +104,18 @@ jobs:
           top_cf        = top_publish.get("cloudfront_invalidate_paths", ["/*"])
           top_recaptcha = cfg.get("recaptcha_site_key", "")
           top_tracker   = cfg.get("tracker", {})
+          top_content_source = cfg.get("content_source", "prod")
+
+          # Anti-leak guard: content_source=mock is only allowed for dev environments.
+          # This prevents an accidental prod inventory from baking in mock content.
+          if top_content_source == "mock" and not top_env.endswith("-dev"):
+              print(
+                  f"FATAL: content_source=mock is set in {path} but "
+                  f"github_environment={top_env!r} is not a dev environment. "
+                  "Mock content must never reach production.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
 
           raw_deployments = cfg.get("deployments", None)
           legacy = raw_deployments is None
@@ -167,6 +179,10 @@ jobs:
                   "tracker_site_id":     top_tracker.get("site_id", ""),
                   "tracker_endpoint":    top_tracker.get("endpoint", ""),
                   "tracker_cdn_base":    top_tracker.get("cdn_base", ""),
+                  # content_source controls which subdirectory of each content repo
+                  # the build step reads. "mock" → mock/ subdirs + --content-source mock
+                  # compiler flag. "prod" (default) → top-level paths + no flag.
+                  "content_source":      top_content_source,
               }
 
           if not legacy:
@@ -431,17 +447,45 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          CONTENT_SOURCE="${{ matrix.deployment.content_source }}"
           POSTS_ARGS=()
-          if [[ -n "${{ matrix.deployment.posts_repo }}" && -d "$GITHUB_WORKSPACE/checkout/posts/posts" ]]; then
-            POSTS_ARGS=("-posts-dir" "$GITHUB_WORKSPACE/checkout/posts/posts")
+          if [[ -n "${{ matrix.deployment.posts_repo }}" ]]; then
+            if [[ "$CONTENT_SOURCE" == "mock" ]]; then
+              POSTS_DIR="$GITHUB_WORKSPACE/checkout/posts/mock/posts"
+            else
+              POSTS_DIR="$GITHUB_WORKSPACE/checkout/posts/posts"
+            fi
+            if [[ -d "$POSTS_DIR" ]]; then
+              POSTS_ARGS=("-posts-dir" "$POSTS_DIR")
+            fi
           fi
           PROJECTS_ARGS=()
-          if [[ -n "${{ matrix.deployment.projects_repo }}" && -f "$GITHUB_WORKSPACE/checkout/projects/projects.yaml" ]]; then
-            PROJECTS_ARGS=("-projects-file" "$GITHUB_WORKSPACE/checkout/projects/projects.yaml")
+          if [[ -n "${{ matrix.deployment.projects_repo }}" ]]; then
+            if [[ "$CONTENT_SOURCE" == "mock" ]]; then
+              PROJECTS_FILE="$GITHUB_WORKSPACE/checkout/projects/mock/projects.yaml"
+            else
+              PROJECTS_FILE="$GITHUB_WORKSPACE/checkout/projects/projects.yaml"
+            fi
+            if [[ -f "$PROJECTS_FILE" ]]; then
+              PROJECTS_ARGS=("-projects-file" "$PROJECTS_FILE")
+            fi
           fi
           COURSES_ARGS=()
-          if [[ -n "${{ matrix.deployment.courses_repo }}" && -f "$GITHUB_WORKSPACE/checkout/courses/courses.yaml" ]]; then
-            COURSES_ARGS=("-courses-file" "$GITHUB_WORKSPACE/checkout/courses/courses.yaml")
+          if [[ -n "${{ matrix.deployment.courses_repo }}" ]]; then
+            if [[ "$CONTENT_SOURCE" == "mock" ]]; then
+              COURSES_FILE="$GITHUB_WORKSPACE/checkout/courses/mock/courses.yaml"
+            else
+              COURSES_FILE="$GITHUB_WORKSPACE/checkout/courses/courses.yaml"
+            fi
+            if [[ -f "$COURSES_FILE" ]]; then
+              COURSES_ARGS=("-courses-file" "$COURSES_FILE")
+            fi
+          fi
+          CONTENT_SOURCE_ARGS=()
+          DEV_DATA_ARGS=()
+          if [[ "$CONTENT_SOURCE" == "mock" ]]; then
+            CONTENT_SOURCE_ARGS=("-content-source" "mock")
+            DEV_DATA_ARGS=("-dev-data")
           fi
           SIBLING_ARGS=()
           SIBLING_PREFIXES="${{ matrix.deployment.sibling_prefixes }}"
@@ -484,6 +528,8 @@ jobs:
             -website-root "$GITHUB_WORKSPACE/checkout/website" \
             -out "$GITHUB_WORKSPACE/dist" \
             -clean-urls \
+            "${CONTENT_SOURCE_ARGS[@]}" \
+            "${DEV_DATA_ARGS[@]}" \
             "${POSTS_ARGS[@]}" \
             "${PROJECTS_ARGS[@]}" \
             "${COURSES_ARGS[@]}" \
