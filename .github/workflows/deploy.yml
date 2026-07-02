@@ -482,8 +482,10 @@ jobs:
             fi
           fi
           CONTENT_SOURCE_ARGS=()
+          DEV_DATA_ARGS=()
           if [[ "$CONTENT_SOURCE" == "mock" ]]; then
             CONTENT_SOURCE_ARGS=("-content-source" "mock")
+            DEV_DATA_ARGS=("-dev-data")
           fi
           SIBLING_ARGS=()
           SIBLING_PREFIXES="${{ matrix.deployment.sibling_prefixes }}"
@@ -527,6 +529,7 @@ jobs:
             -out "$GITHUB_WORKSPACE/dist" \
             -clean-urls \
             "${CONTENT_SOURCE_ARGS[@]}" \
+            "${DEV_DATA_ARGS[@]}" \
             "${POSTS_ARGS[@]}" \
             "${PROJECTS_ARGS[@]}" \
             "${COURSES_ARGS[@]}" \
