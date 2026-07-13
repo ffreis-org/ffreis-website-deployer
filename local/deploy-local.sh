@@ -231,6 +231,24 @@ guard_blog_cards() {
   return $missing
 }
 
+# ── known-bad reCAPTCHA site-key guard ────────────────────────────────────────
+# The malformed prod reCAPTCHA v3 site key 6LfLH-cs… (Google rejects it) broke
+# ffreis.com chat + forms on 2026-06-29. It was hot-fixed live but lingered in
+# git; a rebuild from a stale ref would silently regress it. Refuse to publish any
+# build whose HTML still embeds a known-bad key. Extend BAD_RECAPTCHA_KEYS if more
+# broken keys are discovered.
+BAD_RECAPTCHA_KEYS="6LfLH-csAAAABtl79WbpOl436ehu5N_bXEm9NvM"
+guard_recaptcha_key() {
+  local dist="$1" name="$2" bad hit=0
+  for bad in $BAD_RECAPTCHA_KEYS; do
+    if grep -rqF "$bad" "$dist" --include='*.html' 2>/dev/null; then
+      echo "  ✗ [$name] build embeds a KNOWN-BAD reCAPTCHA site key ($bad) — would break chat/forms" >&2
+      hit=1
+    fi
+  done
+  return $hit
+}
+
 # ── per-deployment build ──────────────────────────────────────────────────────
 declare -a SYNC_PLAN=()   # "dist_dir\tbucket\tprefix\tregion\tcf_paths\tsibling"
 
@@ -295,8 +313,14 @@ build_one() {
     echo "    This is the seed-leak signature. Refusing to continue." >&2
     exit 4
   fi
+  # Guard: no known-broken reCAPTCHA site key may ship.
+  if ! guard_recaptcha_key "$dist" "$name"; then
+    echo "  ✗ GUARD FAILED for '$name': build embeds a known-bad reCAPTCHA site key." >&2
+    echo "    Fix the key in the source site.yaml before deploying. Refusing to continue." >&2
+    exit 4
+  fi
   local npages; npages=$(find "$dist/blog" -mindepth 2 -name index.html 2>/dev/null | wc -l | tr -d ' ')
-  echo "  ✓ [$name] built OK — $npages blog post page(s), all listing cards backed."
+  echo "  ✓ [$name] built OK — $npages blog post page(s), all listing cards backed, reCAPTCHA key OK."
 
   SYNC_PLAN+=("$dist"$'\x1f'"$publish_bucket"$'\x1f'"$publish_prefix"$'\x1f'"$publish_region"$'\x1f'"$cf_paths"$'\x1f'"$sibling_prefixes")
 }
