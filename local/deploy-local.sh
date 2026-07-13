@@ -42,6 +42,7 @@ WORKSPACE_ROOT=""
 ACTION="build-only"
 YES_PROD=0
 KEEP=0
+DISABLE_SECTIONS=""
 CF_DISTRIBUTION_ID="${CF_DISTRIBUTION_ID:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -53,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --build-only)          ACTION="build-only"; shift ;;
     --deploy)              ACTION="deploy"; shift ;;
     --yes-prod)            YES_PROD=1; shift ;;
+    --disable-sections)    DISABLE_SECTIONS="$2"; shift 2 ;;
     --keep)                KEEP=1; shift ;;
     -h|--help)             sed -n '2,40p' "$0"; exit 0 ;;
     -*)                    echo "unknown option: $1" >&2; exit 2 ;;
@@ -157,12 +159,15 @@ bp = [(d["publish_bucket"], d["publish_prefix"]) for d in deps]
 for d in deps:
     sib = [p for (b, p) in bp if b == d["publish_bucket"] and p and p != d["publish_prefix"]]
     d["sibling_prefixes"] = " ".join(sib)
+    # Section visibility (site-level): sections to hide in this environment.
+    d["disable_sections"] = ",".join(cfg.get("disable_sections", []))
 
 cols = ["name","website_repo","website_ref","data_repo","data_ref","data_subpath",
         "posts_repo","posts_ref","projects_repo","projects_ref","courses_repo","courses_ref",
         "shared_js_repo","shared_js_ref","compiler_repo","compiler_ref",
         "js_inline","js_shared_inline","raster_inline","embed_fonts","inline_body_css",
-        "publish_bucket","publish_prefix","publish_region","cf_paths","sibling_prefixes"]
+        "publish_bucket","publish_prefix","publish_region","cf_paths","sibling_prefixes",
+        "disable_sections"]
 for d in deps:
     if only and d["name"] != only:
         continue
@@ -260,7 +265,7 @@ build_one() {
         compiler_repo="${15}" compiler_ref="${16}" js_inline="${17}" js_shared_inline="${18}" \
         raster_inline="${19}" embed_fonts="${20}" inline_body_css="${21}" \
         publish_bucket="${22}" publish_prefix="${23}" publish_region="${24}" \
-        cf_paths="${25}" sibling_prefixes="${26}"
+        cf_paths="${25}" sibling_prefixes="${26}" disable_sections="${27:-}"
 
   echo "── build deployment: $name ──────────────────────────────────────────────"
   local work="$BUILD_ROOT/$name"
@@ -298,6 +303,9 @@ build_one() {
   [[ -n "$projects_repo" && -f "$co/projects/projects.yaml" ]] && args+=(-projects-file "$co/projects/projects.yaml")
   [[ -n "$courses_repo"  && -f "$co/courses/courses.yaml" ]]   && args+=(-courses-file "$co/courses/courses.yaml")
   [[ -n "$sibling_prefixes" ]] && args+=(-sibling-base-paths "${sibling_prefixes// /,}")
+  local disable="${disable_sections:-}"
+  [[ -n "$DISABLE_SECTIONS" ]] && disable="$DISABLE_SECTIONS"
+  [[ -n "$disable" ]] && args+=(-disable-sections "$disable")
   [[ -n "$js_inline" ]]        && args+=(-js-inline-threshold "$js_inline")
   [[ -n "$js_shared_inline" ]] && args+=(-js-shared-inline-threshold "$js_shared_inline")
   [[ -n "$raster_inline" ]]    && args+=(-raster-inline-threshold "$raster_inline")
@@ -319,7 +327,8 @@ build_one() {
     echo "    Fix the key in the source site.yaml before deploying. Refusing to continue." >&2
     exit 4
   fi
-  local npages; npages=$(find "$dist/blog" -mindepth 2 -name index.html 2>/dev/null | wc -l | tr -d ' ')
+  local npages=0
+  [[ -d "$dist/blog" ]] && npages=$(find "$dist/blog" -mindepth 2 -name index.html 2>/dev/null | wc -l | tr -d ' ')
   echo "  ✓ [$name] built OK — $npages blog post page(s), all listing cards backed, reCAPTCHA key OK."
 
   SYNC_PLAN+=("$dist"$'\x1f'"$publish_bucket"$'\x1f'"$publish_prefix"$'\x1f'"$publish_region"$'\x1f'"$cf_paths"$'\x1f'"$sibling_prefixes")
