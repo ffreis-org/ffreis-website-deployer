@@ -114,6 +114,36 @@ extracts them from `top_compiler` and passes them as matrix outputs:
 `compiler_raster_inline_threshold`, `compiler_embed_fonts`, `compiler_inline_body_css`.
 The build step converts them into the matching compiler flags.
 
+## Local deploy (`local/deploy-local.sh`) — the sanctioned local-first path
+
+When GitHub Actions is unavailable (e.g. the billing pause), deploy with
+`local/deploy-local.sh <website_name>` instead of an ad-hoc `aws s3 sync`. It is a
+faithful replica of `deploy.yml`'s build → promote → invalidate: it resolves the
+inventory YAML with the **same** `resolve()` logic, exports each source repo at its
+pinned ref, injects data/shared-JS, and — critically — passes
+`-posts-dir`/`-projects-file`/`-courses-file` exactly like CI.
+
+**Why it exists:** a manual `aws s3 sync` of a local build skips the content
+injection, so the compiler renders the `60-pages.yaml` blog **seed** placeholder
+(`/blog/production-ml-systems/`, which 404s) instead of the real posts. That is
+exactly how the mock post reached ffreis.com prod on 2026-06-29. This script closes
+that gap and refuses to publish a build whose blog listing links a card with no
+backing post page (the seed-leak signature).
+
+```bash
+local/deploy-local.sh ffreis                       # build + guard only (no AWS) — DEFAULT
+CF_DISTRIBUTION_ID=<id> local/deploy-local.sh ffreis --deploy --yes-prod   # publish prod
+```
+
+- Default action is `--build-only` (no AWS calls). `--deploy` syncs to the live
+  bucket + invalidates CloudFront; a prod target additionally requires `--yes-prod`.
+- Sync mirrors CI: `--delete` is skipped when sibling deployments share the bucket
+  (e.g. ffreis `en`/`pt`), so one language never wipes another's content.
+- Run from a normal checkout, or pass `--workspace <root>` / `--inventory <dir>`
+  when running from a git worktree.
+- This is a `-content-source prod` build; it does not enable the `mock/` content
+  system (see "Content source selection"). The two guards are independent.
+
 ## Keeping this file current
 
 - **If you discover a fact not reflected here:** add it before finishing your task.
