@@ -18,6 +18,6 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
-    uses: ffreis-org/ffreis-workflows-general/.github/workflows/general-stale.yml@0aa2f6932831848d438834938acefcd98bc05c42 # post-v1.6.0
+    uses: FelipeFuhr/ffreis-workflows-general/.github/workflows/general-stale.yml@0aa2f6932831848d438834938acefcd98bc05c42 # post-v1.6.0
     with:
       only: "both"
